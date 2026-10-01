@@ -182,7 +182,7 @@ pub fn extract_directive_metadata<'a>(
     }
 
     // Extract @Input/@Output/@HostBinding/@HostListener from class members
-    builder = builder.extract_from_class(allocator, class, source_text);
+    builder = builder.extract_from_class_in(allocator, class, source_text, Some(consts));
 
     // Detect if ngOnChanges lifecycle hook is implemented
     // Similar to Angular's: const usesOnChanges = members.some(member => ...)
@@ -206,6 +206,20 @@ pub fn extract_directive_metadata<'a>(
     // Now we need to merge host metadata from decorator with host metadata from class members
     // The builder already has host data from extract_from_class, we need to merge the decorator host
     let mut metadata = builder.build()?;
+
+    // `queries:` from the decorator come after the member queries, as in ngtsc.
+    if let Some(config) = config_obj {
+        let queries = super::parse_decorator_queries(
+            allocator,
+            config,
+            class,
+            source_text,
+            consts,
+            "Directive",
+        );
+        metadata.view_queries.extend(queries.view);
+        metadata.queries.extend(queries.content);
+    }
 
     if let Some(io) = io {
         let fields = std::mem::replace(&mut metadata.inputs, Vec::new_in(&allocator));
@@ -959,7 +973,7 @@ pub(crate) fn resolve_member_transforms<'a>(
             _ => continue,
         };
         let Some(name) = key.static_name() else { continue };
-        let options = super::property_decorators::input_decorator_options(decorators);
+        let options = super::property_decorators::input_decorator_options(decorators, consts);
         let Some(options) = options else { continue };
         let options = evaluator.evaluate(options);
         let Some(transform) = options.prop("transform") else { continue };
@@ -1035,22 +1049,25 @@ pub(crate) fn angular_decorator_config<'a>(
     Some((config, name))
 }
 
-/// The first error ngtsc raises for the inputs and outputs of a `@Component` /
-/// `@Directive` on `class`, in the order it checks them
-/// (`extractDirectiveMetadata`): `inputs:`, `@Input` members, `outputs:`, then
-/// output members. ngtsc stops at the first one.
+/// The first error ngtsc raises for the inputs, outputs and queries of a
+/// `@Component` / `@Directive` on `class`, in the order it checks them
+/// (`extractDirectiveMetadata`): `inputs:`, `@Input` members, `outputs:`,
+/// output members, query members (`@ViewChild`, ...), then `queries:`. ngtsc
+/// stops at the first one.
 ///
-/// Each error points where ngtsc's does: the `inputs:` / `outputs:` value, or
-/// the member.
+/// Each error points where ngtsc's does: the `inputs:` / `outputs:` value, the
+/// member, or the part of a query at fault. `source_text` is the file's, as
+/// when the class is compiled, so both read the same queries.
 pub fn decorator_io_errors<'a>(
     allocator: &'a Allocator,
     class: &'a Class<'a>,
+    source_text: Option<&'a str>,
     consts: &StringConsts<'a>,
 ) -> std::vec::Vec<OxcDiagnostic> {
     let Some((config, decorator_name)) = angular_decorator_config(class) else {
         return std::vec::Vec::new();
     };
-    let io = config.map(|config| parse_decorator_io(allocator, config, class, None, consts));
+    let io = config.map(|config| parse_decorator_io(allocator, config, class, source_text, consts));
     let (meta_inputs, meta_outputs): (std::vec::Vec<&str>, std::vec::Vec<&str>) = match &io {
         Some(io) => (
             io.inputs.iter().map(|i| i.class_property_name.as_str()).collect(),
@@ -1070,7 +1087,7 @@ pub fn decorator_io_errors<'a>(
             };
             let name = key.static_name()?;
             // `@Input({ transform })`
-            let options = super::property_decorators::input_decorator_options(decorators);
+            let options = super::property_decorators::input_decorator_options(decorators, consts);
             if let Some(options) = options {
                 let span = options.span();
                 let options = evaluator.evaluate(options);
@@ -1134,12 +1151,30 @@ pub fn decorator_io_errors<'a>(
             })
         })
     };
+    let member_queries =
+        || super::property_decorators::member_query_error(allocator, class, source_text, consts);
+    // With the source text, like the compiled queries: a predicate is emitted
+    // as written, which some expressions (functions) need it for.
+    let queries = || {
+        let config = config?;
+        let queries = super::parse_decorator_queries(
+            allocator,
+            config,
+            class,
+            source_text,
+            consts,
+            decorator_name,
+        );
+        queries.error
+    };
 
     io.as_ref()
         .and_then(|io| io.input_error.clone())
         .or_else(input_members)
         .or_else(|| io.as_ref().and_then(|io| io.output_error.clone()))
         .or_else(output_members)
+        .or_else(member_queries)
+        .or_else(queries)
         .map(|(message, span)| OxcDiagnostic::error(message).with_label(span))
         .into_iter()
         .collect()

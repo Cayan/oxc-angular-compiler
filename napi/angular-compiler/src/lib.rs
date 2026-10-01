@@ -1553,8 +1553,8 @@ pub fn extract_component_metadata_sync(
     use oxc_angular_compiler::{
         ChangeDetectionStrategy as RustChangeDetection, QueryPredicate,
         ViewEncapsulation as RustViewEncapsulation, build_import_map, collect_string_consts,
-        extract_component_metadata, extract_content_queries, extract_input_metadata,
-        extract_output_metadata, extract_view_queries,
+        extract_class_queries, extract_component_metadata, extract_input_metadata_in,
+        extract_output_metadata_in,
     };
     use oxc_ast::ast::{Declaration, ExportDefaultDeclarationKind, Statement};
     use oxc_parser::Parser;
@@ -1666,8 +1666,14 @@ pub fn extract_component_metadata_sync(
                     metadata.view_providers.as_ref().map(|e| emitter.emit_expression(e));
                 let animations = metadata.animations.as_ref().map(|e| emitter.emit_expression(e));
 
-                // Extract inputs from @Input decorators
-                let rust_inputs = extract_input_metadata(&allocator, class, Some(&source));
+                // Extract inputs from @Input decorators (also `@core.Input()`
+                // through a namespace import of @angular/core).
+                let rust_inputs = extract_input_metadata_in(
+                    &allocator,
+                    class,
+                    Some(&source),
+                    Some(&string_consts),
+                );
                 let inputs: Option<Vec<ExtractedInputMetadata>> = if rust_inputs.is_empty() {
                     None
                 } else {
@@ -1688,8 +1694,9 @@ pub fn extract_component_metadata_sync(
                     )
                 };
 
-                // Extract outputs from @Output decorators
-                let rust_outputs = extract_output_metadata(&allocator, class);
+                // Extract outputs from @Output decorators (also `@core.Output()`).
+                let rust_outputs =
+                    extract_output_metadata_in(&allocator, class, Some(&string_consts));
                 let outputs: Option<Vec<ExtractedOutputMetadata>> = if rust_outputs.is_empty() {
                     None
                 } else {
@@ -1720,8 +1727,10 @@ pub fn extract_component_metadata_sync(
                     }
                 }
 
-                // Extract view queries from @ViewChild/@ViewChildren decorators
-                let rust_view_queries = extract_view_queries(&allocator, class, Some(&source));
+                // View and content queries exactly as the component is compiled
+                // (member queries, then `queries:` metadata).
+                let (rust_view_queries, rust_content_queries) =
+                    extract_class_queries(&allocator, class, Some(&source), &string_consts);
                 let view_queries: Option<Vec<ExtractedQueryMetadata>> =
                     if rust_view_queries.is_empty() {
                         None
@@ -1741,9 +1750,6 @@ pub fn extract_component_metadata_sync(
                         )
                     };
 
-                // Extract content queries from @ContentChild/@ContentChildren decorators
-                let rust_content_queries =
-                    extract_content_queries(&allocator, class, Some(&source));
                 let queries: Option<Vec<ExtractedQueryMetadata>> =
                     if rust_content_queries.is_empty() {
                         None

@@ -411,41 +411,67 @@ impl<'a> R3DirectiveMetadataBuilder<'a> {
     /// # Returns
     /// The builder with all extracted metadata added.
     pub fn extract_from_class(
-        mut self,
+        self,
         allocator: &'a Allocator,
         class: &'a Class<'a>,
         source_text: Option<&'a str>,
     ) -> Self {
+        self.extract_from_class_in(allocator, class, source_text, None)
+    }
+
+    /// [`Self::extract_from_class`], resolving query predicates that reference
+    /// same-file consts (`@ViewChild(SELECTOR)`) the way ngtsc does.
+    pub(crate) fn extract_from_class_in(
+        mut self,
+        allocator: &'a Allocator,
+        class: &'a Class<'a>,
+        source_text: Option<&'a str>,
+        consts: Option<&super::StringConsts<'a>>,
+    ) -> Self {
         // Extract inputs from @Input decorators
-        let inputs =
-            super::property_decorators::extract_input_metadata(allocator, class, source_text);
+        let inputs = super::property_decorators::extract_input_metadata_in(
+            allocator,
+            class,
+            source_text,
+            consts,
+        );
         for input in inputs {
             self = self.add_input(input);
         }
 
         // Extract outputs from @Output decorators
-        let outputs = super::property_decorators::extract_output_metadata(allocator, class);
+        let outputs =
+            super::property_decorators::extract_output_metadata_in(allocator, class, consts);
         for (class_name, binding_name) in outputs {
             self = self.add_output(class_name, binding_name);
         }
 
         // Extract view queries from @ViewChild/@ViewChildren
-        let view_queries =
-            super::property_decorators::extract_view_queries(allocator, class, source_text);
+        let view_queries = super::property_decorators::extract_view_queries_in(
+            allocator,
+            class,
+            source_text,
+            consts,
+        );
         for query in view_queries {
             self = self.add_view_query(query);
         }
 
         // Extract content queries from @ContentChild/@ContentChildren
-        let content_queries =
-            super::property_decorators::extract_content_queries(allocator, class, source_text);
+        let content_queries = super::property_decorators::extract_content_queries_in(
+            allocator,
+            class,
+            source_text,
+            consts,
+        );
         for query in content_queries {
             self = self.add_query(query);
         }
 
         // Extract host bindings from @HostBinding
         // Wrap with brackets: "class.active" -> "[class.active]"
-        let host_bindings = super::property_decorators::extract_host_bindings(allocator, class);
+        let host_bindings =
+            super::property_decorators::extract_host_bindings_in(allocator, class, consts);
         for (host_prop, class_prop) in host_bindings {
             // Add to host.properties with wrapped key
             let wrapped_key =
@@ -456,7 +482,8 @@ impl<'a> R3DirectiveMetadataBuilder<'a> {
         // Extract host listeners from @HostListener
         // Wrap event name with parentheses and build method expression with args
         // Reference: Angular's shared.ts:713 - `bindings.listeners[eventName] = \`${member.name}(${args.join(',')})\``
-        let host_listeners = super::property_decorators::extract_host_listeners(allocator, class);
+        let host_listeners =
+            super::property_decorators::extract_host_listeners_in(allocator, class, consts);
         for (event_name, method_name, args) in host_listeners {
             // Wrap event name: "click" -> "(click)"
             let wrapped_key =
