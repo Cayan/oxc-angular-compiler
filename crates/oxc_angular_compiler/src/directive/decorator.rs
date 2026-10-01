@@ -8,14 +8,17 @@ use std::collections::HashMap;
 use oxc_allocator::{Allocator, Box, Vec};
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BindingPattern, Class, ClassElement, Declaration, Decorator,
-    Expression, MethodDefinitionKind, ObjectPropertyKind, Program, PropertyKey, Statement,
-    TemplateLiteral, VariableDeclarationKind,
+    Expression, MethodDefinitionKind, ObjectExpression, ObjectPropertyKind, Program, PropertyKey,
+    Statement, TemplateLiteral, VariableDeclarationKind,
 };
-use oxc_span::Span;
+use oxc_diagnostics::OxcDiagnostic;
+use oxc_span::{GetSpan, Span};
 use oxc_str::Ident;
 
+use super::evaluator::{Evaluator, FileScope, Prop, Value};
 use super::metadata::{
     R3DirectiveMetadata, R3DirectiveMetadataBuilder, R3HostDirectiveMetadata, R3HostMetadata,
+    R3InputMetadata,
 };
 use crate::factory::R3DependencyMetadata;
 use crate::output::ast::{OutputAstBuilder, OutputExpression, ReadVarExpr};
@@ -117,6 +120,7 @@ pub fn extract_directive_metadata<'a>(
 
     // Track host metadata from the decorator
     let mut host_from_decorator: Option<R3HostMetadata<'a>> = None;
+    let io = config_obj.map(|obj| parse_decorator_io(allocator, obj, source_text, consts));
 
     // Parse each property in the config object (if present)
     if let Some(config_obj) = config_obj {
@@ -202,6 +206,14 @@ pub fn extract_directive_metadata<'a>(
     // Now we need to merge host metadata from decorator with host metadata from class members
     // The builder already has host data from extract_from_class, we need to merge the decorator host
     let mut metadata = builder.build()?;
+
+    if let Some(io) = io {
+        let fields = std::mem::replace(&mut metadata.inputs, Vec::new_in(&allocator));
+        metadata.inputs =
+            merge_by_class_property(io.inputs, fields, |i| i.class_property_name.as_str());
+        let fields = std::mem::replace(&mut metadata.outputs, Vec::new_in(&allocator));
+        metadata.outputs = merge_by_class_property(io.outputs, fields, |o| o.0.as_str());
+    }
 
     // Merge host metadata from decorator into the existing host metadata
     if let Some(decorator_host) = host_from_decorator {
@@ -466,8 +478,28 @@ fn has_ng_on_changes_method(class: &Class<'_>) -> bool {
 /// the official Angular compiler's compile-time constant folding.
 ///
 /// Only literal string values (string literals and single-quasi template literals)
-/// are captured; computed initializers and cross-file imports are out of scope.
-pub type StringConsts<'a> = HashMap<&'a str, Ident<'a>>;
+/// are folded; computed initializers and cross-file imports are out of scope.
+/// It also carries the file's top-level declarations, for evaluating
+/// `inputs:`, `outputs:` and `queries:` the way ngtsc's partial evaluator does.
+#[derive(Default)]
+pub struct StringConsts<'a> {
+    strings: HashMap<&'a str, Ident<'a>>,
+    program: Option<&'a Program<'a>>,
+    /// Built on first use: most files have no decorator metadata to evaluate.
+    scope: std::cell::OnceCell<FileScope<'a>>,
+}
+
+impl<'a> StringConsts<'a> {
+    /// The folded string value of a same-file `const`.
+    pub fn get(&self, name: &str) -> Option<&Ident<'a>> {
+        self.strings.get(name)
+    }
+
+    /// The file's top-level declarations, for the partial evaluator.
+    pub(crate) fn scope(&self) -> &FileScope<'a> {
+        self.scope.get_or_init(|| self.program.map(FileScope::collect).unwrap_or_default())
+    }
+}
 
 /// Walk the top-level statements of a program and collect string-valued `const`
 /// declarations.
@@ -480,12 +512,12 @@ pub type StringConsts<'a> = HashMap<&'a str, Ident<'a>>;
 /// matching the official Angular compiler's partial evaluator.
 pub fn collect_string_consts<'a>(
     allocator: &'a Allocator,
-    program: &Program<'a>,
+    program: &'a Program<'a>,
 ) -> StringConsts<'a> {
     // Collect every top-level `const` binding's name + initializer up front so
     // we can iterate to a fixed point. Each pending entry is dropped from the
     // worklist as soon as its initializer folds successfully.
-    let mut pending: std::vec::Vec<(&'a str, &Expression<'a>)> = std::vec::Vec::new();
+    let mut pending: std::vec::Vec<(&'a str, &'a Expression<'a>)> = std::vec::Vec::new();
     for stmt in &program.body {
         let decl = match stmt {
             Statement::VariableDeclaration(d) => d.as_ref(),
@@ -507,21 +539,25 @@ pub fn collect_string_consts<'a>(
         }
     }
 
-    let mut map = StringConsts::default();
+    let mut map = StringConsts {
+        strings: HashMap::default(),
+        program: Some(program),
+        scope: std::cell::OnceCell::new(),
+    };
     loop {
-        let before = map.len();
+        let before = map.strings.len();
         pending.retain(|(name, init)| {
-            if map.contains_key(name) {
+            if map.strings.contains_key(name) {
                 return false;
             }
             if let Some(value) = extract_string_value(allocator, init, &map) {
-                map.insert(name, value);
+                map.strings.insert(name, value);
                 false
             } else {
                 true
             }
         });
-        if map.len() == before {
+        if map.strings.len() == before {
             break;
         }
     }
@@ -607,6 +643,409 @@ fn extract_boolean_value(expr: &Expression<'_>) -> Option<bool> {
         Expression::BooleanLiteral(lit) => Some(lit.value.into()),
         _ => None,
     }
+}
+
+/// `inputs:` / `outputs:` declared in a `@Directive` / `@Component` metadata object.
+pub(crate) struct DecoratorIo<'a> {
+    pub inputs: Vec<'a, R3InputMetadata<'a>>,
+    /// (class property name, binding property name)
+    pub outputs: Vec<'a, (Ident<'a>, Ident<'a>)>,
+    /// The first error ngtsc reports for `inputs:`, then for `outputs:`, and
+    /// the node it reports it on (the `inputs:` / `outputs:` value).
+    pub input_error: Option<(String, Span)>,
+    pub output_error: Option<(String, Span)>,
+}
+
+/// The last property called `name` in a decorator metadata object. Like
+/// ngtsc's `reflectObjectLiteral`, computed keys (`[K]: ...`) are skipped.
+pub(super) fn config_property<'a>(
+    config: &'a ObjectExpression<'a>,
+    name: &str,
+    consts: &StringConsts<'a>,
+) -> Option<&'a Expression<'a>> {
+    config.properties.iter().rev().find_map(|prop| match prop {
+        ObjectPropertyKind::ObjectProperty(prop)
+            if !prop.computed
+                && get_property_key_name(&prop.key, consts).is_some_and(|k| k == name) =>
+        {
+            Some(&prop.value)
+        }
+        _ => None,
+    })
+}
+
+/// ngtsc's error for `value` in `@Directive.{field}`, or, when the value comes
+/// from another module, why oxc can't tell (ngtsc would read that file).
+fn io_error(field: &str, message: impl FnOnce() -> String, value: &Value<'_>) -> String {
+    match value {
+        Value::Reference { name, .. } if value.is_import() => format!(
+            "@Directive.{field} depends on '{name}', which is imported from another module. \
+             OXC compiles one file at a time and cannot evaluate values from other files."
+        ),
+        _ => format!("{}{}", message(), value.wrong_type_suffix()),
+    }
+}
+
+/// oxc's error for a transform written inside a function that the metadata
+/// calls, using that function's parameters (`transform: (v) => v + name`), so
+/// it would mean something else, or nothing, where the metadata is compiled.
+/// ngtsc copies it there anyway.
+///
+/// The same for a transform written in a namespace that uses the namespace's
+/// declarations (`transform: fn`, with `fn` declared in the namespace), for
+/// which ngtsc emits the bare names.
+fn scoped_transform_error(input: &str, expr: &Expression<'_>, consts: &StringConsts<'_>) -> String {
+    match consts.scope().namespace_used_by(expr) {
+        Some(namespace) => format!(
+            "@Directive.inputs: the transform of \"{input}\" uses a declaration of namespace \
+             {namespace}, which isn't in scope outside it. OXC can't emit it there."
+        ),
+        None => format!(
+            "@Directive.inputs: the transform of \"{input}\" uses a parameter of the function \
+             it's written in. OXC can't emit it outside that function."
+        ),
+    }
+}
+
+/// Parse `inputs:` / `outputs:` from a decorator metadata object.
+///
+/// Reference: `parseInputsArray` / `parseOutputsArray` in
+/// packages/compiler-cli/src/ngtsc/annotations/directive/src/shared.ts
+pub(crate) fn parse_decorator_io<'a>(
+    allocator: &'a Allocator,
+    config: &'a ObjectExpression<'a>,
+    source_text: Option<&'a str>,
+    consts: &StringConsts<'a>,
+) -> DecoratorIo<'a> {
+    let evaluator = Evaluator::new(consts);
+    let alloc = |s: &str| Ident::from(allocator.alloc_str(s));
+    let mut io = DecoratorIo {
+        inputs: Vec::new_in(&allocator),
+        outputs: Vec::new_in(&allocator),
+        input_error: None,
+        output_error: None,
+    };
+
+    if let Some(expr) = config_property(config, "inputs", consts) {
+        let span = expr.span();
+        match evaluator.evaluate(expr) {
+            Value::Array(items) => {
+                for (i, item) in items.iter().enumerate() {
+                    let error = match item {
+                        Value::String(s) => {
+                            let (class_name, binding_name) = parse_mapping_string(s);
+                            upsert_input(
+                                &mut io.inputs,
+                                R3InputMetadata {
+                                    binding_property_name: alloc(binding_name),
+                                    ..R3InputMetadata::simple(alloc(class_name))
+                                },
+                            );
+                            None
+                        }
+                        Value::Object(_) => {
+                            parse_input_object(allocator, &mut io, item, i, source_text, consts)
+                        }
+                        other => Some(io_error(
+                            "inputs",
+                            || {
+                                "@Directive.inputs array can only contain strings or object literals"
+                                    .into()
+                            },
+                            other,
+                        )),
+                    };
+                    io.input_error = io.input_error.take().or(error.map(|e| (e, span)));
+                }
+            }
+            other => {
+                let error = io_error(
+                    "inputs",
+                    || "Failed to resolve @Directive.inputs to an array".into(),
+                    &other,
+                );
+                io.input_error = Some((error, span));
+            }
+        }
+    }
+
+    if let Some(expr) = config_property(config, "outputs", consts) {
+        let span = expr.span();
+        match evaluator.evaluate(expr) {
+            Value::Array(items) => {
+                for (i, item) in items.iter().enumerate() {
+                    match item {
+                        Value::String(s) => {
+                            let (class_name, binding_name) = parse_mapping_string(s);
+                            upsert_meta(
+                                &mut io.outputs,
+                                (alloc(class_name), alloc(binding_name)),
+                                |o| o.0.as_str(),
+                            );
+                        }
+                        other => {
+                            io.output_error = io.output_error.take().or_else(|| {
+                                let message = || {
+                                    format!("Failed to resolve outputs at position {i} to a string")
+                                };
+                                Some((io_error("outputs", message, other), span))
+                            });
+                        }
+                    }
+                }
+            }
+            other => {
+                let error = io_error(
+                    "outputs",
+                    || "Failed to resolve @Directive.outputs to a string array".into(),
+                    &other,
+                );
+                io.output_error = Some((error, span));
+            }
+        }
+    }
+    io
+}
+
+/// `'field'` or `'field: binding'` -> (class property name, binding property name).
+/// Like ngtsc's `value.split(':', 2)`, anything after a second colon is ignored.
+fn parse_mapping_string(value: &str) -> (&str, &str) {
+    let mut parts = value.split(':').map(str::trim);
+    let field = parts.next().unwrap_or_default();
+    (field, parts.next().unwrap_or(field))
+}
+
+/// `{ name, alias?, required?, transform? }` at `position` in the `inputs:` array.
+/// Returns ngtsc's error, if any.
+fn parse_input_object<'a>(
+    allocator: &'a Allocator,
+    io: &mut DecoratorIo<'a>,
+    item: &Value<'a>,
+    position: usize,
+    source_text: Option<&'a str>,
+    consts: &StringConsts<'a>,
+) -> Option<String> {
+    let name = match item.prop("name").map(|p| &p.value) {
+        Some(Value::String(name)) => name.as_str(),
+        other => {
+            let message = || {
+                format!(
+                    "Value at position {position} of @Directive.inputs array must have a \"name\" property"
+                )
+            };
+            return Some(io_error("inputs", message, other.unwrap_or(&Value::Undefined)));
+        }
+    };
+    // ngtsc would read an imported alias or `required` flag from its file; oxc
+    // can't, and guessing would compile the wrong binding.
+    for key in ["alias", "required"] {
+        if let Some(value) = item.prop(key).map(|p| &p.value).filter(|v| v.is_import()) {
+            return Some(io_error("inputs", String::new, value));
+        }
+    }
+    let alias = item.prop("alias").and_then(|p| p.value.as_str()).unwrap_or(name);
+    let required = matches!(item.prop("required").map(|p| &p.value), Some(Value::Bool(true)));
+    let transform_function = match item.prop("transform") {
+        Some(Prop { expr: Some(expr), origin: None, .. }) => {
+            return Some(scoped_transform_error(name, expr, consts));
+        }
+        Some(transform) => {
+            transform.origin.and_then(|e| convert_oxc_expression(allocator, e, source_text))
+        }
+        None => None,
+    };
+    upsert_input(
+        &mut io.inputs,
+        R3InputMetadata {
+            class_property_name: Ident::from(allocator.alloc_str(name)),
+            binding_property_name: Ident::from(allocator.alloc_str(alias)),
+            required,
+            is_signal: false,
+            transform_function,
+        },
+    );
+    None
+}
+
+/// ngtsc's `{...fromMeta, ...fromFields}` keyed by class property name: a member
+/// declaration replaces the metadata entry in place, new members are appended.
+/// The result is ordered like the keys of a JavaScript object: integer-like
+/// keys first, in ascending order.
+pub(crate) fn merge_by_class_property<T>(
+    mut from_meta: Vec<'_, T>,
+    from_fields: impl IntoIterator<Item = T>,
+    key: impl Fn(&T) -> &str,
+) -> Vec<'_, T> {
+    for field in from_fields {
+        upsert(&mut from_meta, field, &key);
+    }
+    // A stable sort: the other keys keep their insertion order.
+    from_meta.sort_by_key(|item| array_index(key(item)).unwrap_or(u32::MAX));
+    from_meta
+}
+
+/// The array index a JavaScript object key stands for (`"0"`, `"42"`, but not
+/// `"01"` or `"4294967295"`), which orders it before all other keys.
+fn array_index(key: &str) -> Option<u32> {
+    let index: u32 = key.parse().ok()?;
+    (index != u32::MAX && index.to_string() == key).then_some(index)
+}
+
+/// Insert keyed by class property name, like assigning to a JS object: a
+/// repeated key keeps its first position and takes the later value.
+fn upsert<T>(list: &mut Vec<'_, T>, item: T, key: impl Fn(&T) -> &str) {
+    match list.iter().position(|existing| key(existing) == key(&item)) {
+        Some(i) => list[i] = item,
+        None => list.push(item),
+    }
+}
+
+/// [`upsert`] for a metadata entry. ngtsc assigns those to a plain object, where
+/// `__proto__` sets the prototype instead, so that entry is dropped.
+fn upsert_meta<T>(list: &mut Vec<'_, T>, item: T, key: impl Fn(&T) -> &str) {
+    if key(&item) != "__proto__" {
+        upsert(list, item, key);
+    }
+}
+
+fn upsert_input<'a>(inputs: &mut Vec<'a, R3InputMetadata<'a>>, input: R3InputMetadata<'a>) {
+    upsert_meta(inputs, input, |i| i.class_property_name.as_str());
+}
+
+/// The `@Component` / `@Directive` decorator on `class`, its metadata object
+/// (if any) and its name.
+pub(crate) fn angular_decorator_config<'a>(
+    class: &'a Class<'a>,
+) -> Option<(Option<&'a ObjectExpression<'a>>, &'static str)> {
+    let (decorator, name) = crate::component::find_component_decorator(&class.decorators)
+        .map(|d| (d, "Component"))
+        .or_else(|| find_directive_decorator(&class.decorators).map(|d| (d, "Directive")))?;
+    let config = match &decorator.expression {
+        Expression::CallExpression(call) => match call.arguments.first() {
+            Some(Argument::ObjectExpression(config)) => Some(&**config),
+            _ => None,
+        },
+        _ => None,
+    };
+    Some((config, name))
+}
+
+/// The first error ngtsc raises for the inputs and outputs of a `@Component` /
+/// `@Directive` on `class`, in the order it checks them
+/// (`extractDirectiveMetadata`): `inputs:`, input members, `outputs:`, then
+/// output members. ngtsc stops at the first one.
+///
+/// Each error points where ngtsc's does: the `inputs:` / `outputs:` value, or
+/// the member.
+pub fn decorator_io_errors<'a>(
+    allocator: &'a Allocator,
+    class: &'a Class<'a>,
+    consts: &StringConsts<'a>,
+) -> std::vec::Vec<OxcDiagnostic> {
+    let Some((config, decorator_name)) = angular_decorator_config(class) else {
+        return std::vec::Vec::new();
+    };
+    let io = config.map(|config| parse_decorator_io(allocator, config, None, consts));
+    let (meta_inputs, meta_outputs): (std::vec::Vec<&str>, std::vec::Vec<&str>) = match &io {
+        Some(io) => (
+            io.inputs.iter().map(|i| i.class_property_name.as_str()).collect(),
+            io.outputs.iter().map(|o| o.0.as_str()).collect(),
+        ),
+        None => Default::default(),
+    };
+    let input_members = || {
+        class.body.body.iter().find_map(|element| {
+            let ClassElement::PropertyDefinition(prop) = element else { return None };
+            let name = prop.key.static_name()?;
+            // A signal input only collides with a metadata entry of the same name.
+            let value = prop.value.as_ref().filter(|_| meta_inputs.contains(&name.as_ref()))?;
+            let is_input = is_initializer_api_call(value, consts, &[INPUT_API, MODEL_API]);
+            is_input.then(|| {
+                let message = format!(
+                    "Input \"{name}\" is also declared as non-signal in @{decorator_name}."
+                );
+                (message, prop.span)
+            })
+        })
+    };
+    let output_members = || {
+        class.body.body.iter().find_map(|element| {
+            let ClassElement::PropertyDefinition(prop) = element else { return None };
+            let (value, name) = (prop.value.as_ref()?, prop.key.static_name()?);
+            if !meta_outputs.contains(&name.as_ref()) {
+                return None;
+            }
+            let is_output = is_initializer_api_call(
+                value,
+                consts,
+                &[OUTPUT_API, OUTPUT_FROM_OBSERVABLE_API, MODEL_API],
+            );
+            is_output.then(|| {
+                let message = format!(
+                    "Output \"{name}\" is unexpectedly declared in @{decorator_name} as well."
+                );
+                (message, prop.span)
+            })
+        })
+    };
+
+    io.as_ref()
+        .and_then(|io| io.input_error.clone())
+        .or_else(input_members)
+        .or_else(|| io.as_ref().and_then(|io| io.output_error.clone()))
+        .or_else(output_members)
+        .map(|(message, span)| OxcDiagnostic::error(message).with_label(span))
+        .into_iter()
+        .collect()
+}
+
+/// An initializer API: its function name and the module exporting it.
+pub(crate) type InitializerApi = (&'static str, &'static str);
+pub(crate) const INPUT_API: InitializerApi = ("input", "@angular/core");
+pub(crate) const MODEL_API: InitializerApi = ("model", "@angular/core");
+pub(crate) const OUTPUT_API: InitializerApi = ("output", "@angular/core");
+pub(crate) const OUTPUT_FROM_OBSERVABLE_API: InitializerApi =
+    ("outputFromObservable", "@angular/core/rxjs-interop");
+
+/// Whether `value` calls one of `apis`, as ngtsc's `tryParseInitializerApi`
+/// recognises them: `f()` or `f.required()` with `f` imported by name from the
+/// API's module (under any alias), or `ns.f()` or `ns.f.required()` with `ns`
+/// a namespace import of it, looking through `as` and parentheses. A function
+/// only named like an API (a local one, or one from another module) isn't one.
+pub(crate) fn is_initializer_api_call(
+    value: &Expression<'_>,
+    consts: &StringConsts<'_>,
+    apis: &[InitializerApi],
+) -> bool {
+    let Expression::CallExpression(call) = super::unwrap_initializer_api_expr(value) else {
+        return false;
+    };
+    let scope = consts.scope();
+    // `f`, imported by name.
+    let named = |f: &Expression<'_>| {
+        let Expression::Identifier(id) = f else { return false };
+        scope.import(&id.name).is_some_and(|import| {
+            apis.iter()
+                .any(|&(name, module)| import.imported == Some(name) && import.module == module)
+        })
+    };
+    // `ns.f`, through a namespace import.
+    let namespaced = |f: &Expression<'_>| {
+        let Expression::StaticMemberExpression(member) = f else { return false };
+        let Expression::Identifier(ns) = &member.object else { return false };
+        scope.import(&ns.name).is_some_and(|import| {
+            import.imported.is_none()
+                && apis
+                    .iter()
+                    .any(|&(name, module)| member.property.name == name && import.module == module)
+        })
+    };
+    let callee = &call.callee;
+    named(callee)
+        || namespaced(callee)
+        || matches!(callee, Expression::StaticMemberExpression(required)
+            if required.property.name == "required"
+                && (named(&required.object) || namespaced(&required.object)))
 }
 
 /// Extract host metadata from a host object expression.
