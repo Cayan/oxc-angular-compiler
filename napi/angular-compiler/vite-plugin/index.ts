@@ -267,6 +267,12 @@ export function angular(options: PluginOptions = {}): Plugin[] {
   // emits per-component HMR updates and we mirror that here.
   const componentsByFile = new Map<string, Set<string>>()
 
+  // For each component .ts file, each compiled component's `@Component`
+  // decorator as the compiler reports it (class name → `Component`, `Cmp`,
+  // `ng.Component`, ...), so the template/styles strip below finds exactly the
+  // decorators the compiler took, under whatever name they're imported.
+  const componentDecoratorsByFile = new Map<string, Map<string, string>>()
+
   // Reverse mapping: resource file path → component file path. Single-valued:
   // the last transform to reference a resource owns the slot. Multiple
   // components in the SAME file are covered by `dispatchAllComponentsInFile`;
@@ -794,7 +800,8 @@ export function angular(options: PluginOptions = {}): Plugin[] {
                   const cachedStripped = componentMetadataCache.get(resolvedId)
                   return (
                     cachedStripped !== undefined &&
-                    cachedStripped === stripComponentMetadata(source)
+                    cachedStripped ===
+                      stripComponentMetadata(source, componentDecoratorsByFile.get(resolvedId))
                   )
                 }
                 const styles: string[] | null =
@@ -875,14 +882,19 @@ export function angular(options: PluginOptions = {}): Plugin[] {
           }
 
           // Quick check for Angular decorators - avoids parsing files without them
-          // OXC handles @Component, @Directive, @NgModule, @Injectable, @Pipe, @Service
+          // OXC handles @Component, @Directive, @NgModule, @Injectable, @Pipe, @Service.
+          // The compiler also takes one imported from `@angular/core` under another
+          // name (`@Cmp(...)`, `@ng.Component(...)`); such a file still names
+          // `@angular/core` and the decorator.
           const hasAngularDecorator =
             code.includes('@Component') ||
             code.includes('@Directive') ||
             code.includes('@NgModule') ||
             code.includes('@Injectable') ||
             code.includes('@Pipe') ||
-            code.includes('@Service')
+            code.includes('@Service') ||
+            (code.includes('@angular/core') &&
+              /\b(?:Component|Directive|NgModule|Injectable|Pipe|Service)\b/.test(code))
           if (!hasAngularDecorator) {
             return
           }
@@ -1022,10 +1034,14 @@ export function angular(options: PluginOptions = {}): Plugin[] {
               dependencies,
             )
             const classNamesInFile = new Set<string>()
+            const decoratorsInFile = new Map<string, string>()
             for (const componentId of templateUpdateKeys) {
               const atIdx = componentId.indexOf('@')
               if (atIdx === -1) continue
-              classNamesInFile.add(componentId.slice(atIdx + 1))
+              const className = componentId.slice(atIdx + 1)
+              classNamesInFile.add(className)
+              const decorator = result.componentDecorators[componentId]
+              if (decorator !== undefined) decoratorsInFile.set(className, decorator)
             }
             // Prune pending updates for components that USED to be in this
             // file but no longer are (e.g. a class was renamed or removed).
@@ -1043,13 +1059,14 @@ export function angular(options: PluginOptions = {}): Plugin[] {
             }
 
             componentsByFile.set(actualId, classNamesInFile)
+            componentDecoratorsByFile.set(actualId, decoratorsInFile)
             for (const className of classNamesInFile) {
               debugHmr('registered: %s -> %s', actualId, className)
             }
 
             // Cache the metadata-stripped (whole-file) source for cheaply
             // diffing whether anything besides template/styles changed.
-            componentMetadataCache.set(actualId, stripComponentMetadata(code))
+            componentMetadataCache.set(actualId, stripComponentMetadata(code, decoratorsInFile))
           }
 
           return {
@@ -1267,6 +1284,7 @@ export function angular(options: PluginOptions = {}): Plugin[] {
           // file (e.g. an external template change just invalidated the .ts
           // module via the graph), the resource branch has it covered.
           const fileClassNames = componentsByFile.get(ctx.file)!
+          const fileDecorators = componentDecoratorsByFile.get(ctx.file)
           let alreadyPending = false
           for (const className of fileClassNames) {
             if (pendingHmrUpdates.has(`${ctx.file}@${className}`)) {
@@ -1296,7 +1314,7 @@ export function angular(options: PluginOptions = {}): Plugin[] {
             } catch {
               newContent = ''
             }
-            const newStripped = stripComponentMetadata(newContent)
+            const newStripped = stripComponentMetadata(newContent, fileDecorators)
             if (newStripped === cachedStripped) {
               debugHmr('inline template/styles-only change, dispatching HMR for %s', ctx.file)
               componentMetadataCache.set(ctx.file, newStripped)
@@ -1455,14 +1473,25 @@ export function angular(options: PluginOptions = {}): Plugin[] {
 }
 
 /**
- * Empty the `template:` and `styles:` field values of *every* `@Component(...)`
- * in the source, returning the result. Used to detect "only template/styles
- * changed somewhere in the file" — if the stripped form of the old and new
- * source is byte-identical, the diff is contained within those fields and we
- * can dispatch HMR (one event per component in the file) instead of a full
- * reload.
+ * Empty the `template:` and `styles:` field values of each component's
+ * `@Component(...)` in `components` (class name → the decorator as the compiler
+ * reported it: `Component`, `Cmp`, `ng.Component`), returning the result. Used
+ * to detect "only template/styles changed somewhere in the file" — if the
+ * stripped form of the old and new source is byte-identical, the diff is
+ * contained within those fields and we can dispatch HMR (one event per
+ * component in the file) instead of a full reload.
+ *
+ * Only the decorator the compiler took is emptied, found by the spelling it
+ * reported, so this never decides on its own which decorators are Angular's.
+ * Another library's `@Component`, or another decorator of the same class, is
+ * left whole, so a change to it reloads the page. The new source is stripped
+ * with the old spellings: a change that could alter them (an import) is outside
+ * the emptied fields, so it already makes the two forms differ.
  */
-function stripComponentMetadata(code: string): string {
+function stripComponentMetadata(
+  code: string,
+  components: ReadonlyMap<string, string> | undefined,
+): string {
   // Enumerate decorators ONCE (O(N) walk of source) and look up each one's
   // template + styles range directly from its argsRange. Calling the
   // className-based locators per decorator would re-enumerate inside each,
@@ -1470,9 +1499,11 @@ function stripComponentMetadata(code: string): string {
   //
   // Splice from highest start → lowest so earlier offsets stay valid as we
   // mutate the string from the end backwards.
-  const decorators = locateComponentDecorators(code)
+  if (!components || components.size === 0) return code
+  const decorators = locateComponentDecorators(code, components.values())
   const ranges: Array<[number, number]> = []
   for (const d of decorators) {
+    if (components.get(d.className) !== d.decorator) continue
     const tpl = locateTemplateInArgs(code, d.argsRange)
     if (tpl) ranges.push(tpl)
     const styles = locateStylesInArgs(code, d.argsRange)

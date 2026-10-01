@@ -87,7 +87,8 @@ pub use styles::{encapsulate_style, shim_css_text};
 // Re-export pipe types
 pub use pipe::{
     PipeCompileResult, PipeMetadata, R3DependencyMetadata, R3PipeMetadata, R3PipeMetadataBuilder,
-    compile_pipe, compile_pipe_from_metadata, extract_pipe_metadata, find_pipe_decorator_span,
+    compile_pipe, compile_pipe_from_metadata, extract_pipe_metadata, extract_pipe_metadata_in,
+    find_pipe_decorator_span,
 };
 
 // Re-export factory types
@@ -114,8 +115,8 @@ pub use directive::{
     compile_directive_from_metadata, extract_class_queries, extract_content_queries,
     extract_directive_metadata, extract_host_bindings, extract_host_listeners,
     extract_input_metadata, extract_input_metadata_in, extract_output_metadata,
-    extract_output_metadata_in, extract_view_queries, find_directive_decorator_span,
-    generate_directive_definitions,
+    extract_output_metadata_in, extract_view_queries, find_angular_class_decorator,
+    find_directive_decorator_span, generate_directive_definitions,
 };
 
 // Re-export injectable types
@@ -154,9 +155,9 @@ pub use class_debug_info::{R3ClassDebugInfo, compile_class_debug_info};
 // Re-export class metadata types
 pub use class_metadata::{
     R3ClassMetadata, R3DeferPerComponentDependency, build_ctor_params_metadata,
-    build_decorator_metadata_array, build_prop_decorators_metadata, compile_class_metadata,
-    compile_component_class_metadata, compile_component_metadata_async_resolver,
-    compile_opaque_async_class_metadata,
+    build_ctor_params_metadata_in, build_decorator_metadata_array, build_prop_decorators_metadata,
+    build_prop_decorators_metadata_in, compile_class_metadata, compile_component_class_metadata,
+    compile_component_metadata_async_resolver, compile_opaque_async_class_metadata,
 };
 
 // Re-export dts types

@@ -27,6 +27,10 @@ pub use compiler::{
     create_inputs_literal, create_outputs_literal,
 };
 pub(crate) use decorator::find_directive_decorator;
+pub(crate) use decorator::{
+    INPUT_API, MODEL_API, OUTPUT_API, OUTPUT_FROM_OBSERVABLE_API, QUERY_APIS, initializer_api,
+    initializer_api_call,
+};
 pub use decorator::{
     StringConsts, collect_string_consts, decorator_io_errors, extract_directive_metadata,
     find_directive_decorator_span,
@@ -34,9 +38,7 @@ pub use decorator::{
 pub(crate) use decorator::{
     angular_decorator_config, extract_string_value, resolve_template_literal,
 };
-pub(crate) use decorator::{
-    merge_by_class_property, parse_decorator_io, resolve_member_transforms,
-};
+pub(crate) use decorator::{merge_by_class_property, parse_decorator_io};
 pub use definition::{DirectiveDefinitions, generate_directive_definitions};
 pub(crate) use dts_type::quote as ts_string_literal;
 pub use evaluator::input_transform_types;
@@ -44,14 +46,15 @@ pub use metadata::{
     QueryPredicate, R3DirectiveMetadata, R3DirectiveMetadataBuilder, R3HostDirectiveMetadata,
     R3HostMetadata, R3InputMetadata, R3QueryMetadata,
 };
+pub(crate) use property_decorators::{
+    angular_class_decorator, angular_core_decorator, angular_member_decorator,
+    angular_param_decorator, extract_host_bindings_in, extract_host_listeners_in,
+    parse_decorator_queries, try_parse_signal_input, try_parse_signal_model,
+    try_parse_signal_output, unwrap_initializer_api_expr,
+};
 pub use property_decorators::{
     extract_class_queries, extract_content_queries, extract_host_bindings, extract_host_listeners,
     extract_input_metadata, extract_input_metadata_in, extract_output_metadata,
-    extract_output_metadata_in, extract_view_queries,
-};
-pub(crate) use property_decorators::{
-    extract_host_bindings_in, extract_host_listeners_in, parse_decorator_queries,
-    try_parse_signal_input, try_parse_signal_model, try_parse_signal_output,
-    unwrap_initializer_api_expr,
+    extract_output_metadata_in, extract_view_queries, find_angular_class_decorator,
 };
 pub use query::{create_content_queries_function, create_view_queries_function};

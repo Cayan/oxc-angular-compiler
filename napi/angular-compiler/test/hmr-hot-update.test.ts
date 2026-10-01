@@ -569,6 +569,137 @@ describe('pendingHmrUpdates race condition', () => {
     expect(fullReload, 'expected a full-reload event').toBeDefined()
   })
 
+  it("triggers full reload when only another library's @Component template changes", async () => {
+    const plugin = getAngularPlugin()
+    const mockServer = await setupPluginWithServer(plugin)
+
+    // `Widget`'s `@Component` comes from another library, so it isn't
+    // compiled: its template isn't one HMR can replace.
+    const mixedPath = join(appDir, 'mixed.component.ts')
+    const source = `
+      import * as ng from '@angular/core';
+      import { Component } from './widgets';
+      @ng.Component({ selector: 'app-first', template: '<div>First</div>' })
+      export class FirstComponent {}
+      @Component({ selector: 'x-widget', template: '<div>Widget</div>' })
+      export class Widget {}
+    `
+    writeFileSync(mixedPath, source)
+
+    if (!plugin.transform || typeof plugin.transform === 'function') {
+      throw new Error('Expected plugin transform handler')
+    }
+    await plugin.transform.handler.call(
+      { error() {}, warn() {}, addWatchFile() {} } as any,
+      source,
+      mixedPath,
+    )
+
+    writeFileSync(mixedPath, source.replace('<div>Widget</div>', '<div>Widget Edited</div>'))
+
+    const ctx = createMockHmrContext(mixedPath, [{ id: mixedPath }], mockServer)
+    await callHandleHotUpdate(plugin, ctx)
+
+    const componentUpdates = mockServer._wsMessages.filter(
+      (m: any) => m.event === 'angular:component-update',
+    )
+    expect(componentUpdates).toHaveLength(0)
+    const fullReload = mockServer._wsMessages.find((m: any) => m.type === 'full-reload')
+    expect(fullReload, 'expected a full-reload event').toBeDefined()
+  })
+
+  // The compiler takes a `@Component` imported from `@angular/core` under any
+  // name, so an inline template or styles edit to one HMRs whatever the
+  // decorator is spelled as.
+  it.each([
+    ['a named import', `import { Component } from '@angular/core';`, 'Component'],
+    ['an aliased import', `import { Component as Cmp } from '@angular/core';`, 'Cmp'],
+    ['a namespace import', `import * as ng from '@angular/core';`, 'ng.Component'],
+    ['a spaced namespace import', `import * as ng from '@angular/core';`, 'ng . Component'],
+  ])(
+    'dispatches HMR for an inline template / styles edit of a component decorated through %s',
+    async (_, importLine, decorator) => {
+      const plugin = getAngularPlugin()
+      const mockServer = await setupPluginWithServer(plugin)
+
+      const path = join(appDir, `spelled-${decorator.replace(/\W/g, '')}.component.ts`)
+      const source = `
+      ${importLine}
+      @${decorator}({ selector: 'app-first', template: '<div>First</div>', styles: ['.a{}'] })
+      export class FirstComponent {}
+    `
+      writeFileSync(path, source)
+
+      if (!plugin.transform || typeof plugin.transform === 'function') {
+        throw new Error('Expected plugin transform handler')
+      }
+      await plugin.transform.handler.call(
+        { error() {}, warn() {}, addWatchFile() {} } as any,
+        source,
+        path,
+      )
+
+      writeFileSync(
+        path,
+        source.replace('<div>First</div>', '<div>Edited</div>').replace('.a{}', '.b{}'),
+      )
+      const ctx = createMockHmrContext(path, [{ id: path }], mockServer)
+      await callHandleHotUpdate(plugin, ctx)
+
+      const componentIds = mockServer._wsMessages
+        .filter((m: any) => m.event === 'angular:component-update')
+        .map((m: any) => decodeURIComponent(m.data.id))
+      expect(componentIds).toEqual([`${path}@FirstComponent`])
+      const fullReload = mockServer._wsMessages.find((m: any) => m.type === 'full-reload')
+      expect(fullReload, 'expected no full-reload for inline template change').toBeUndefined()
+    },
+  )
+
+  // Only the decorator the compiler took is emptied: another library's
+  // `@Component` on the same class keeps its template, so editing it reloads.
+  it.each([
+    ['the compiled decorator', '<div>Angular</div>', 'hmr'],
+    ["another library's decorator on the same class", '<div>Widget</div>', 'reload'],
+  ])('edit to the template of %s', async (_, edited, expected) => {
+    const plugin = getAngularPlugin()
+    const mockServer = await setupPluginWithServer(plugin)
+
+    const path = join(appDir, `two-decorators-${expected}.component.ts`)
+    const source = `
+      import * as ng from '@angular/core';
+      import { Component } from './widgets';
+      @Component({ selector: 'x-widget', template: '<div>Widget</div>' })
+      @ng.Component({ selector: 'app-first', template: '<div>Angular</div>' })
+      export class FirstComponent {}
+    `
+    writeFileSync(path, source)
+
+    if (!plugin.transform || typeof plugin.transform === 'function') {
+      throw new Error('Expected plugin transform handler')
+    }
+    await plugin.transform.handler.call(
+      { error() {}, warn() {}, addWatchFile() {} } as any,
+      source,
+      path,
+    )
+
+    writeFileSync(path, source.replace(edited, '<div>Edited</div>'))
+    const ctx = createMockHmrContext(path, [{ id: path }], mockServer)
+    await callHandleHotUpdate(plugin, ctx)
+
+    const updates = mockServer._wsMessages.filter(
+      (m: any) => m.event === 'angular:component-update',
+    )
+    const fullReload = mockServer._wsMessages.find((m: any) => m.type === 'full-reload')
+    if (expected === 'hmr') {
+      expect(updates).toHaveLength(1)
+      expect(fullReload).toBeUndefined()
+    } else {
+      expect(updates).toHaveLength(0)
+      expect(fullReload).toBeDefined()
+    }
+  })
+
   it('consumes pending entry and dispatches angular:invalidate on compile error', async () => {
     const plugin = getAngularPlugin()
     const mockServer = await setupPluginWithServer(plugin)

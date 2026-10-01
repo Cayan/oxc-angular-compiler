@@ -224,3 +224,113 @@ fn explicit_view_child_decorator_blocks_query_synthesis() {
         "synthesis must skip when explicit query decorator coexists. Got:\n{out}"
     );
 }
+
+#[test]
+fn only_angular_initializer_apis_are_lowered() {
+    // ngtsc's JIT transform recognises the APIs by their `@angular/core` import
+    // (`tryParseInitializerApi`): an alias counts; a function from another
+    // module, a local one or an undeclared one doesn't. The synthesized
+    // decorators reuse the file's `@angular/core` namespace import, like ngtsc.
+    let out = compile_jit(
+        "import { Component, input as inp } from '@angular/core';\n\
+         import * as ng from '@angular/core';\n\
+         import { output } from './other';\n\
+         function model(v?: any): any { return v; }\n\
+         @Component({ selector: 'c', template: '', standalone: true })\n\
+         export class C {\n  a = inp(0);\n  b = output();\n  c = model(0);\n  d = viewChild('x');\n  e = ng.contentChild.required('y');\n}\n",
+    );
+    let props = &out[out.find("propDecorators").expect("propDecorators missing")..];
+    let props: String = props.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        props.starts_with(
+            r#"propDecorators={a:[{type:ng.Input,args:[{isSignal:true,alias:"a",required:false,transform:undefined}]}],e:[{type:ng.ContentChild,args:["y",{isSignal:true}]}]};"#
+        ),
+        "Got:\n{out}"
+    );
+}
+
+#[test]
+fn synthesized_decorators_use_a_free_angular_core_namespace() {
+    // ngtsc's `ImportManager` reuses the file's own `import * as x from
+    // '@angular/core'`, and otherwise names the new import `i0_1`, `i0_2`, ...
+    // when the file already has an `i0` identifier: an aliased signal API
+    // (`input as i0`), a variable, ... A second `i0` binding would be a
+    // SyntaxError.
+    let alias = compile_jit(&component("value = i0(0);", "input as i0"));
+    assert!(alias.contains("import * as i0_1 from \"@angular/core\";"), "{alias}");
+    assert!(alias.contains("type: i0_1.Input"), "{alias}");
+    assert!(!alias.contains("import * as i0 from"), "{alias}");
+
+    let variable = compile_jit(&format!(
+        "const i0 = 1;\nconst i0_1 = 2;\n{}",
+        component("value = input(i0 + i0_1);", "input")
+    ));
+    assert!(variable.contains("import * as i0_2 from \"@angular/core\";"), "{variable}");
+    assert!(variable.contains("type: i0_2.Input"), "{variable}");
+
+    let reused = compile_jit(&format!(
+        "import * as i0 from '@angular/core';\n{}",
+        component("value = input(0);", "input")
+    ));
+    assert_eq!(reused.matches("from \"@angular/core\"").count(), 2, "{reused}");
+    assert!(reused.contains("type: i0.Input"), "{reused}");
+}
+
+#[test]
+fn member_decorators_are_lowered_only_when_imported_from_angular_core() {
+    // Like ngtsc's JIT transform: `@angular/core`'s decorators (under an alias
+    // or a namespace too) go to `propDecorators`, as written; another module's
+    // `@Input` stays a decorator applied with `__decorate`.
+    let out = compile_jit(
+        "import { Component, Input as In } from '@angular/core';\n\
+         import * as core from '@angular/core';\n\
+         import { Input } from './other';\n\
+         @Component({ selector: 'c', template: '', standalone: true })\n\
+         export class C {\n  @In() a: any;\n  @core.Output() b: any;\n  @Input() c: any;\n}\n",
+    );
+    let compact: String = out.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        compact.contains("propDecorators={a:[{type:In}],b:[{type:core.Output}]};"),
+        "Got:\n{out}"
+    );
+    assert!(compact.contains(r#"__decorate([Input()],C.prototype,"c",void0);"#), "Got:\n{out}");
+}
+
+#[test]
+fn member_decorators_named_like_angular_ones_count_only_from_angular_core() {
+    // Like ngtsc's JIT transform, where a member decorator comes from decides,
+    // not its name: another module's `@Inject` / `@Component` / `@ns.Optional`
+    // stay decorators applied with `__decorate` (they used to be dropped).
+    let out = compile_jit(
+        "import { Component } from '@angular/core';\n\
+         import { Inject, Component as Cmp } from './di';\n\
+         import * as di from './di';\n\
+         @Component({ selector: 'c', template: '', standalone: true })\n\
+         export class C {\n  @Inject(X) a: any;\n  @Cmp({}) b: any;\n  @di.Optional() c: any;\n}\n",
+    );
+    let compact: String = out.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(compact.contains(r#"__decorate([Inject(X)],C.prototype,"a",void0);"#), "Got:\n{out}");
+    assert!(compact.contains(r#"__decorate([Cmp({})],C.prototype,"b",void0);"#), "Got:\n{out}");
+    assert!(
+        compact.contains(r#"__decorate([di.Optional()],C.prototype,"c",void0);"#),
+        "Got:\n{out}"
+    );
+
+    // `@angular/core`'s `Inject` under an alias is treated like `@Inject`.
+    let aliased = compile_jit(
+        "import { Component, Inject as Inj } from '@angular/core';\n\
+         @Component({ selector: 'c', template: '', standalone: true })\n\
+         export class C {\n  @Inj(X) a: any;\n}\n",
+    );
+    let plain = compile_jit(
+        "import { Component, Inject } from '@angular/core';\n\
+         @Component({ selector: 'c', template: '', standalone: true })\n\
+         export class C {\n  @Inject(X) a: any;\n}\n",
+    );
+    assert!(!aliased.contains("Inj(X)"), "Got:\n{aliased}");
+    assert_eq!(
+        aliased.replace("Inject as Inj", "Inject"),
+        plain,
+        "aliased:\n{aliased}\nplain:\n{plain}"
+    );
+}

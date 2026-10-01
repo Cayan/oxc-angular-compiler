@@ -7,9 +7,9 @@ use std::collections::HashMap;
 
 use oxc_allocator::{Allocator, Box, Vec};
 use oxc_ast::ast::{
-    Argument, ArrayExpressionElement, BindingPattern, Class, ClassElement, Declaration, Decorator,
-    Expression, MethodDefinitionKind, ObjectExpression, ObjectPropertyKind, Program, PropertyKey,
-    Statement, TemplateLiteral, VariableDeclarationKind,
+    Argument, ArrayExpressionElement, BindingPattern, CallExpression, Class, ClassElement,
+    Declaration, Decorator, Expression, MethodDefinitionKind, ObjectExpression, ObjectPropertyKind,
+    Program, PropertyKey, Statement, TemplateLiteral, VariableDeclarationKind,
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::{GetSpan, Span};
@@ -24,10 +24,17 @@ use crate::factory::R3DependencyMetadata;
 use crate::output::ast::{OutputAstBuilder, OutputExpression, ReadVarExpr};
 use crate::output::oxc_converter::convert_oxc_expression;
 
-/// Find the @Directive decorator in a list of decorators.
+/// Find the @Directive decorator in a list of decorators. With the file's
+/// `consts`, only Angular's (imported from `@angular/core`, see
+/// [`super::find_angular_class_decorator`]); without them (the public
+/// [`find_directive_decorator_span`]), any named `Directive`.
 pub(crate) fn find_directive_decorator<'a>(
     decorators: &'a [Decorator<'a>],
+    consts: Option<&StringConsts<'_>>,
 ) -> Option<&'a Decorator<'a>> {
+    if let Some(consts) = consts {
+        return super::find_angular_class_decorator(decorators, "Directive", consts);
+    }
     decorators.iter().find(|d| match &d.expression {
         Expression::CallExpression(call) => is_directive_call(&call.callee),
         Expression::Identifier(id) => id.name == "Directive",
@@ -43,8 +50,11 @@ pub(crate) fn find_directive_decorator<'a>(
 /// This is necessary because Angular's JIT runtime will process any remaining
 /// decorators and create conflicting property definitions (like `ɵfac` getters)
 /// that interfere with the AOT-compiled assignments.
+///
+/// Without the file's imports, this matches any decorator named `Directive`;
+/// the compiler only takes one imported from `@angular/core`.
 pub fn find_directive_decorator_span(class: &Class<'_>) -> Option<Span> {
-    find_directive_decorator(&class.decorators).map(|d| d.span)
+    find_directive_decorator(&class.decorators, None).map(|d| d.span)
 }
 
 /// Check if a callee expression is a call to 'Directive'.
@@ -92,19 +102,14 @@ pub fn extract_directive_metadata<'a>(
     // Get the class name
     let class_name: Ident<'a> = class.id.as_ref()?.name.clone().into();
 
-    // Find the @Directive decorator
-    let directive_decorator = find_directive_decorator(&class.decorators)?;
+    // Find Angular's @Directive decorator
+    let directive_decorator = find_directive_decorator(&class.decorators, Some(consts))?;
 
     // Get the decorator call arguments
     let call_expr = match &directive_decorator.expression {
         Expression::CallExpression(call) => call,
         _ => return None,
     };
-
-    // Verify it's calling 'Directive'
-    if !is_directive_call(&call_expr.callee) {
-        return None;
-    }
 
     // Create builder with defaults
     let mut builder = R3DirectiveMetadataBuilder::new(allocator)
@@ -198,7 +203,8 @@ pub fn extract_directive_metadata<'a>(
     // Extract constructor dependencies for factory generation
     // This enables proper DI for directive constructors
     // See: packages/compiler-cli/src/ngtsc/annotations/common/src/di.ts
-    let constructor_deps = extract_constructor_deps(allocator, class, has_superclass, source_text);
+    let constructor_deps =
+        extract_constructor_deps(allocator, class, has_superclass, source_text, consts);
     if let Some(deps) = constructor_deps {
         builder = builder.deps(deps);
     }
@@ -228,7 +234,6 @@ pub fn extract_directive_metadata<'a>(
         let fields = std::mem::replace(&mut metadata.outputs, Vec::new_in(&allocator));
         metadata.outputs = merge_by_class_property(io.outputs, fields, |o| o.0.as_str());
     }
-    resolve_member_transforms(allocator, class, source_text, consts, &mut metadata.inputs);
 
     // Merge host metadata from decorator into the existing host metadata
     if let Some(decorator_host) = host_from_decorator {
@@ -294,6 +299,7 @@ fn extract_constructor_deps<'a>(
     class: &'a Class<'a>,
     has_superclass: bool,
     source_text: Option<&'a str>,
+    consts: &StringConsts<'a>,
 ) -> Option<Vec<'a, R3DependencyMetadata<'a>>> {
     // Find the constructor method
     let constructor = class.body.body.iter().find_map(|element| {
@@ -312,7 +318,7 @@ fn extract_constructor_deps<'a>(
             let mut deps = Vec::with_capacity_in(params.items.len(), &allocator);
 
             for param in &params.items {
-                let dep = extract_param_dependency(allocator, param, source_text);
+                let dep = extract_param_dependency(allocator, param, source_text, consts);
                 deps.push(dep);
             }
 
@@ -328,11 +334,14 @@ fn extract_constructor_deps<'a>(
     }
 }
 
-/// Extract dependency metadata from a single constructor parameter.
+/// Extract dependency metadata from a single constructor parameter. Only
+/// Angular's parameter decorators count, imported from `@angular/core` (see
+/// [`super::angular_param_decorator`]).
 fn extract_param_dependency<'a>(
     allocator: &'a Allocator,
     param: &oxc_ast::ast::FormalParameter<'a>,
     source_text: Option<&'a str>,
+    consts: &StringConsts<'a>,
 ) -> R3DependencyMetadata<'a> {
     // Extract flags and @Inject token from decorators
     let mut optional = false;
@@ -343,8 +352,8 @@ fn extract_param_dependency<'a>(
     let mut attribute_name: Option<Ident<'a>> = None;
 
     for decorator in &param.decorators {
-        if let Some(name) = get_decorator_name_from_expr(&decorator.expression) {
-            match name.as_str() {
+        if let Some(name) = super::angular_param_decorator(decorator, Some(consts)) {
+            match name {
                 "Inject" => {
                     // @Inject(TOKEN) - extract the token
                     if let Expression::CallExpression(call) = &decorator.expression {
@@ -403,23 +412,6 @@ fn extract_param_dependency<'a>(
         self_,
         skip_self,
         type_only_invalid: false,
-    }
-}
-
-/// Get the name of a decorator from its expression.
-fn get_decorator_name_from_expr<'a>(expr: &'a Expression<'a>) -> Option<Ident<'a>> {
-    match expr {
-        // @Optional
-        Expression::Identifier(id) => Some(id.name.clone().into()),
-        // @Optional()
-        Expression::CallExpression(call) => {
-            if let Expression::Identifier(id) = &call.callee {
-                Some(id.name.clone().into())
-            } else {
-                None
-            }
-        }
-        _ => None,
     }
 }
 
@@ -508,6 +500,17 @@ impl<'a> StringConsts<'a> {
     /// The folded string value of a same-file `const`.
     pub fn get(&self, name: &str) -> Option<&Ident<'a>> {
         self.strings.get(name)
+    }
+
+    /// `program`'s declarations without its folded strings: enough to tell
+    /// where a name is imported from (see
+    /// [`super::angular_param_decorator`]).
+    pub(crate) fn declarations_of(program: &'a Program<'a>) -> Self {
+        Self {
+            strings: HashMap::default(),
+            program: Some(program),
+            scope: std::cell::OnceCell::new(),
+        }
     }
 
     /// The file's top-level declarations, for the partial evaluator.
@@ -739,18 +742,48 @@ fn scoped_transform_error(
     }
 }
 
+/// oxc's error for a transform computed from an import (`!FLAG`, `make()`,
+/// `FLAG && fn`, `Helpers.fn`): ngtsc evaluates it with the import's file, oxc
+/// can't (see [`value_error`]). An imported function named directly
+/// (`transform: fn`) needs no evaluating: it's assumed to be a function.
+fn imported_transform_error(
+    subject: &str,
+    transform: &Prop<'_>,
+    span: Span,
+) -> Option<(String, Span)> {
+    let computed = matches!(
+        transform.value,
+        Value::Reference { kind: RefKind::Import { namespace_member: false, local: None }, .. }
+    );
+    computed.then(|| (value_error(subject, String::new, &transform.value), span))
+}
+
 /// Whether [`transform_expression`] has no expression to emit for a transform
 /// it was given, because it uses the parameters of the function it's written
 /// in (see [`scoped_transform_error`]).
 fn is_out_of_scope(transform: &Prop<'_>, consts: &StringConsts<'_>) -> bool {
-    transform.expr.is_some() && transform.origin.is_none() && !is_named_function(transform, consts)
+    transform.expr.is_some()
+        && transform.origin.is_none()
+        && reference_identity(transform, consts).is_none()
 }
 
-/// Whether a transform is emitted as the name of the same-file function it
-/// resolves to (see [`transform_expression`]).
-fn is_named_function(transform: &Prop<'_>, consts: &StringConsts<'_>) -> bool {
-    matches!(&transform.value, Value::Reference { name, kind: RefKind::Function(function, _) }
-        if consts.scope().is_top_level_function(name, function))
+/// The identifier ngtsc emits for a transform that resolves to a reference
+/// (the reference's identity in this file, `getIdentityIn`), see
+/// [`transform_expression`]: a same-file function's name, or the name an
+/// imported function or a global (including one declared outside the file,
+/// like `atob`) was first reached by, through any variables
+/// (`booleanAttribute` for `const t = booleanAttribute` and `transform: t`).
+fn reference_identity<'p>(transform: &'p Prop<'_>, consts: &StringConsts<'_>) -> Option<&'p str> {
+    match &transform.value {
+        Value::Reference { name, kind: RefKind::Function(function, _) }
+            if consts.scope().is_top_level_function(name, function) =>
+        {
+            Some(name)
+        }
+        Value::Reference { kind: RefKind::Import { namespace_member: false, local }, .. } => *local,
+        Value::Reference { name, kind: RefKind::Global | RefKind::Ambient } => Some(name),
+        _ => None,
+    }
 }
 
 /// Parse `inputs:` / `outputs:` from a decorator metadata object.
@@ -909,16 +942,18 @@ fn parse_input_object<'a>(
     let (transform_function, error) = match item.prop("transform") {
         Some(transform) => {
             let expr = transform_expression(allocator, transform, source_text, consts);
-            let error =
-                transform_error(transform, Some(position), name, class, consts.scope(), span)
-                    .or_else(|| match transform {
-                        Prop { expr: Some(written), .. } if is_out_of_scope(transform, consts) => {
-                            let message =
-                                scoped_transform_error("@Directive.inputs", name, written, consts);
-                            Some((message, span))
-                        }
-                        _ => None,
-                    });
+            let error = imported_transform_error("@Directive.inputs", transform, span)
+                .or_else(|| {
+                    transform_error(transform, Some(position), name, class, consts.scope(), span)
+                })
+                .or_else(|| match transform {
+                    Prop { expr: Some(written), .. } if is_out_of_scope(transform, consts) => {
+                        let message =
+                            scoped_transform_error("@Directive.inputs", name, written, consts);
+                        Some((message, span))
+                    }
+                    _ => None,
+                });
             (expr, error)
         }
         None => (None, None),
@@ -938,7 +973,10 @@ fn parse_input_object<'a>(
 
 /// The expression ngtsc emits for a transform: a function written in place, or
 /// the identifier of the declaration it resolved to (`T.f` where
-/// `const T = { f }` becomes `f`). For a static method that identifier isn't in
+/// `const T = { f }` becomes `f`), or the name an imported function or a
+/// global was first reached by (`booleanAttribute` for
+/// `const transform = booleanAttribute` and `{ transform }`), see
+/// [`reference_identity`]. For a static method that identifier isn't in
 /// scope, so the written expression is kept there, as it can be written where
 /// the metadata is compiled (see [`Prop::origin`]): `None` when it can't.
 pub(crate) fn transform_expression<'a>(
@@ -947,42 +985,11 @@ pub(crate) fn transform_expression<'a>(
     source_text: Option<&'a str>,
     consts: &StringConsts<'a>,
 ) -> Option<OutputExpression<'a>> {
-    match &transform.value {
-        Value::Reference { name, .. } if is_named_function(transform, consts) => {
+    match reference_identity(transform, consts) {
+        Some(name) => {
             Some(OutputAstBuilder::variable(allocator, Ident::from(allocator.alloc_str(name))))
         }
-        _ => convert_oxc_expression(allocator, transform.origin?, source_text),
-    }
-}
-
-/// Give `@Input({ transform })` members the transform expression ngtsc emits
-/// (see [`transform_expression`]), in place of the one written.
-pub(crate) fn resolve_member_transforms<'a>(
-    allocator: &'a Allocator,
-    class: &'a Class<'a>,
-    source_text: Option<&'a str>,
-    consts: &StringConsts<'a>,
-    inputs: &mut [R3InputMetadata<'a>],
-) {
-    let evaluator = Evaluator::new(consts);
-    for element in &class.body.body {
-        let (key, decorators) = match element {
-            ClassElement::PropertyDefinition(p) => (&p.key, &p.decorators),
-            ClassElement::AccessorProperty(p) => (&p.key, &p.decorators),
-            ClassElement::MethodDefinition(m) => (&m.key, &m.decorators),
-            _ => continue,
-        };
-        let Some(name) = key.static_name() else { continue };
-        let options = super::property_decorators::input_decorator_options(decorators, consts);
-        let Some(options) = options else { continue };
-        let options = evaluator.evaluate(options);
-        let Some(transform) = options.prop("transform") else { continue };
-        let Some(input) = inputs.iter_mut().find(|i| i.class_property_name == name.as_ref()) else {
-            continue;
-        };
-        if let Some(expr) = transform_expression(allocator, transform, source_text, consts) {
-            input.transform_function = Some(expr);
-        }
+        None => convert_oxc_expression(allocator, transform.origin?, source_text),
     }
 }
 
@@ -1031,14 +1038,18 @@ fn upsert_input<'a>(inputs: &mut Vec<'a, R3InputMetadata<'a>>, input: R3InputMet
     upsert_meta(inputs, input, |i| i.class_property_name.as_str());
 }
 
-/// The `@Component` / `@Directive` decorator on `class`, its metadata object
-/// (if any) and its name.
+/// Angular's `@Component` / `@Directive` decorator on `class` (imported from
+/// `@angular/core`, in the file `consts` was collected from), its metadata
+/// object (if any) and its name.
 pub(crate) fn angular_decorator_config<'a>(
     class: &'a Class<'a>,
+    consts: &StringConsts<'_>,
 ) -> Option<(Option<&'a ObjectExpression<'a>>, &'static str)> {
-    let (decorator, name) = crate::component::find_component_decorator(&class.decorators)
+    let (decorator, name) = crate::component::find_component_decorator(&class.decorators, consts)
         .map(|d| (d, "Component"))
-        .or_else(|| find_directive_decorator(&class.decorators).map(|d| (d, "Directive")))?;
+        .or_else(|| {
+            find_directive_decorator(&class.decorators, Some(consts)).map(|d| (d, "Directive"))
+        })?;
     let config = match &decorator.expression {
         Expression::CallExpression(call) => match call.arguments.first() {
             Some(Argument::ObjectExpression(config)) => Some(&**config),
@@ -1064,7 +1075,7 @@ pub fn decorator_io_errors<'a>(
     source_text: Option<&'a str>,
     consts: &StringConsts<'a>,
 ) -> std::vec::Vec<OxcDiagnostic> {
-    let Some((config, decorator_name)) = angular_decorator_config(class) else {
+    let Some((config, decorator_name)) = angular_decorator_config(class, consts) else {
         return std::vec::Vec::new();
     };
     let io = config.map(|config| parse_decorator_io(allocator, config, class, source_text, consts));
@@ -1086,39 +1097,27 @@ pub fn decorator_io_errors<'a>(
                 _ => return None,
             };
             let name = key.static_name()?;
-            // `@Input({ transform })`
-            let options = super::property_decorators::input_decorator_options(decorators, consts);
-            if let Some(options) = options {
-                let span = options.span();
-                let options = evaluator.evaluate(options);
-                // ngtsc reads imported options (or an imported alias or
-                // `required`) from their file; oxc can't, and compiling the
-                // input without them would be a different binding.
-                let imported = std::iter::once(&options)
-                    .chain(
-                        ["alias", "required"].iter().filter_map(|k| Some(&options.prop(k)?.value)),
-                    )
-                    .find(|value| value.is_import());
-                if let Some(value) = imported {
-                    return Some((value_error("@Input", String::new, value), span));
+            // `@Input(...)`, as ngtsc's `tryParseInputFieldMapping` reads it.
+            let decorator =
+                super::property_decorators::member_decorator(decorators, "Input", consts);
+            // ngtsc rejects `@Input` on a signal input or model before reading
+            // the decorator.
+            if let (Some(decorator), Some(value)) = (decorator, value) {
+                let message = if is_initializer_api_call(value, consts, &[INPUT_API]) {
+                    Some("Using @Input with a signal input is not allowed.")
+                } else if is_initializer_api_call(value, consts, &[MODEL_API]) {
+                    Some("Using @Input with a model input is not allowed.")
+                } else {
+                    None
+                };
+                if let Some(message) = message {
+                    return Some((message.to_string(), decorator.span));
                 }
-                if let Some(transform) = options.prop("transform") {
-                    let error =
-                        transform_error(transform, None, &name, class, consts.scope(), span)
-                            .or_else(|| match transform {
-                                Prop { expr: Some(written), .. }
-                                    if is_out_of_scope(transform, consts) =>
-                                {
-                                    let message =
-                                        scoped_transform_error("@Input", &name, written, consts);
-                                    Some((message, span))
-                                }
-                                _ => None,
-                            });
-                    if error.is_some() {
-                        return error;
-                    }
-                }
+            }
+            let error =
+                decorator.and_then(|d| input_decorator_error(d, &name, class, consts, &evaluator));
+            if error.is_some() {
+                return error;
             }
             // A signal input only collides with a metadata entry of the same name.
             let value = value.filter(|_| meta_inputs.contains(&name.as_ref()))?;
@@ -1133,6 +1132,34 @@ pub fn decorator_io_errors<'a>(
     };
     let output_members = || {
         class.body.body.iter().find_map(|element| {
+            // `@Output(...)`, as ngtsc's `tryParseDecoratorOutput` reads it, on
+            // the members an output is compiled from.
+            let (decorators, value) = match element {
+                ClassElement::PropertyDefinition(p) => (Some(&p.decorators), p.value.as_ref()),
+                ClassElement::AccessorProperty(p) => (Some(&p.decorators), p.value.as_ref()),
+                _ => (None, None),
+            };
+            let decorator = decorators.and_then(|decorators| {
+                super::property_decorators::member_decorator(decorators, "Output", consts)
+            });
+            if let Some(error) = decorator.and_then(|d| output_decorator_error(d, &evaluator)) {
+                return Some(error);
+            }
+            // Then `@Output` on an `output()` or a model, like ngtsc's
+            // `parseOutputFields`.
+            if let (Some(decorator), Some(value)) = (decorator, value) {
+                let apis = [OUTPUT_API, OUTPUT_FROM_OBSERVABLE_API];
+                let message = if is_initializer_api_call(value, consts, &apis) {
+                    Some("Using \"@Output\" with \"output()\" is not allowed.")
+                } else if is_initializer_api_call(value, consts, &[MODEL_API]) {
+                    Some("Using @Output with a model input is not allowed.")
+                } else {
+                    None
+                };
+                if let Some(message) = message {
+                    return Some((message.to_string(), decorator.span));
+                }
+            }
             let ClassElement::PropertyDefinition(prop) = element else { return None };
             let (value, name) = (prop.value.as_ref()?, prop.key.static_name()?);
             if !meta_outputs.contains(&name.as_ref()) {
@@ -1180,6 +1207,93 @@ pub fn decorator_io_errors<'a>(
         .collect()
 }
 
+/// ngtsc's error for the `@Input(...)` decorator of the member `name`
+/// (`tryParseInputFieldMapping`): more than one argument, an argument that
+/// isn't `null`, a string or an object, or a `transform` it can't use. Options
+/// from another module are reported as such (see [`value_error`]).
+fn input_decorator_error<'a>(
+    decorator: &'a Decorator<'a>,
+    name: &str,
+    class: &'a Class<'a>,
+    consts: &StringConsts<'a>,
+    evaluator: &Evaluator<'_, 'a>,
+) -> Option<(String, Span)> {
+    // ngtsc names it as it's written: `@In` for `import { Input as In }`.
+    let subject = format!("@{}", super::property_decorators::decorator_written_name(decorator));
+    if let Some(error) = decorator_arity_error(decorator, &subject) {
+        return Some(error);
+    }
+    let options = super::property_decorators::decorator_argument(decorator)?;
+    let span = options.span();
+    let options = evaluator.evaluate(options);
+    // ngtsc reads imported options (or an imported alias or `required`) from
+    // their file; oxc can't, and compiling the input without them would be a
+    // different binding.
+    let imported = std::iter::once(&options)
+        .chain(["alias", "required"].iter().filter_map(|k| Some(&options.prop(k)?.value)))
+        .find(|value| value.is_import());
+    if let Some(value) = imported {
+        return Some((value_error(&subject, String::new, value), span));
+    }
+    if !matches!(options, Value::Null | Value::String(_) | Value::Object(_)) {
+        let message = format!(
+            "{subject} decorator argument must resolve to a string or an object literal{}",
+            options.wrong_type_suffix()
+        );
+        return Some((message, decorator.span));
+    }
+    let transform = options.prop("transform")?;
+    if let Some(error) = imported_transform_error(&subject, transform, span) {
+        return Some(error);
+    }
+    transform_error(transform, None, name, class, consts.scope(), span).or_else(
+        || match transform {
+            Prop { expr: Some(written), .. } if is_out_of_scope(transform, consts) => {
+                Some((scoped_transform_error("@Input", name, written, consts), span))
+            }
+            _ => None,
+        },
+    )
+}
+
+/// ngtsc's error for a member decorator called with more than one argument,
+/// named `subject` (`@Input`, or `@In` for `import { Input as In }`).
+fn decorator_arity_error(decorator: &Decorator<'_>, subject: &str) -> Option<(String, Span)> {
+    let Expression::CallExpression(call) = &decorator.expression else { return None };
+    let count = call.arguments.len();
+    (count > 1).then(|| {
+        let message = format!("{subject} can have at most one argument, got {count} argument(s)");
+        (message, decorator.span)
+    })
+}
+
+/// ngtsc's error for an `@Output(...)` decorator (`tryParseDecoratorOutput`):
+/// more than one argument, or an argument that isn't a string. An argument
+/// from another module is reported as such (see [`value_error`]).
+fn output_decorator_error<'a>(
+    decorator: &'a Decorator<'a>,
+    evaluator: &Evaluator<'_, 'a>,
+) -> Option<(String, Span)> {
+    // ngtsc names it `@Output` whatever it's imported as.
+    if let Some(error) = decorator_arity_error(decorator, "@Output") {
+        return Some(error);
+    }
+    let argument = super::property_decorators::decorator_argument(decorator)?;
+    match evaluator.evaluate(argument) {
+        Value::String(_) => None,
+        value if value.is_import() => {
+            Some((value_error("@Output", String::new, &value), argument.span()))
+        }
+        value => {
+            let message = format!(
+                "@Output decorator argument must resolve to a string{}",
+                value.wrong_type_suffix()
+            );
+            Some((message, decorator.span))
+        }
+    }
+}
+
 /// An initializer API: its function name and the module exporting it.
 pub(crate) type InitializerApi = (&'static str, &'static str);
 pub(crate) const INPUT_API: InitializerApi = ("input", "@angular/core");
@@ -1188,45 +1302,83 @@ pub(crate) const OUTPUT_API: InitializerApi = ("output", "@angular/core");
 pub(crate) const OUTPUT_FROM_OBSERVABLE_API: InitializerApi =
     ("outputFromObservable", "@angular/core/rxjs-interop");
 
-/// Whether `value` calls one of `apis`, as ngtsc's `tryParseInitializerApi`
-/// recognises them: `f()` or `f.required()` with `f` imported by name from the
-/// API's module (under any alias), or `ns.f()` or `ns.f.required()` with `ns`
-/// a namespace import of it, looking through `as` and parentheses. A function
-/// only named like an API (a local one, or one from another module) isn't one.
+/// Angular's signal query functions (ngtsc's `QUERY_INITIALIZER_FNS`).
+pub(crate) const QUERY_APIS: [InitializerApi; 4] = [
+    ("viewChild", "@angular/core"),
+    ("viewChildren", "@angular/core"),
+    ("contentChild", "@angular/core"),
+    ("contentChildren", "@angular/core"),
+];
+
+/// Whether `value` calls one of `apis` (see [`initializer_api_call`]).
 pub(crate) fn is_initializer_api_call(
     value: &Expression<'_>,
     consts: &StringConsts<'_>,
     apis: &[InitializerApi],
 ) -> bool {
+    initializer_api_call(value, Some(consts), apis).is_some()
+}
+
+/// The call to one of `apis` that `value` is, looking through `as` and
+/// parentheses: the API, whether it's the `.required` form, and the call.
+/// See [`initializer_api`] for the callees that count.
+pub(crate) fn initializer_api_call<'b, 'a>(
+    value: &'b Expression<'a>,
+    consts: Option<&StringConsts<'_>>,
+    apis: &[InitializerApi],
+) -> Option<(InitializerApi, bool, &'b CallExpression<'a>)> {
     let Expression::CallExpression(call) = super::unwrap_initializer_api_expr(value) else {
-        return false;
+        return None;
     };
-    let scope = consts.scope();
+    let (api, required) = initializer_api(&call.callee, consts, apis)?;
+    Some((api, required, call))
+}
+
+/// Which of `apis` `callee` is, and whether it's its `.required` form, as
+/// ngtsc's `tryParseInitializerApi` recognises them: `f` or `f.required` with
+/// `f` imported by name from the API's module (under any alias), or `ns.f` or
+/// `ns.f.required` with `ns` a namespace import of it. A function only named
+/// like an API (a local one, one from another module, or an undeclared one)
+/// isn't one.
+///
+/// Without the file's imports (`consts` is `None`, for the public extraction
+/// functions that aren't given them), `f` and `ns.f` are matched by name.
+pub(crate) fn initializer_api(
+    callee: &Expression<'_>,
+    consts: Option<&StringConsts<'_>>,
+    apis: &[InitializerApi],
+) -> Option<(InitializerApi, bool)> {
+    let scope = consts.map(StringConsts::scope);
     // `f`, imported by name.
     let named = |f: &Expression<'_>| {
-        let Expression::Identifier(id) = f else { return false };
-        scope.import(&id.name).is_some_and(|import| {
-            apis.iter()
-                .any(|&(name, module)| import.imported == Some(name) && import.module == module)
-        })
+        let Expression::Identifier(id) = f else { return None };
+        let Some(scope) = scope else {
+            return apis.iter().copied().find(|&(name, _)| id.name == name);
+        };
+        let import = scope.import(&id.name)?;
+        apis.iter()
+            .copied()
+            .find(|&(name, module)| import.imported == Some(name) && import.module == module)
     };
     // `ns.f`, through a namespace import.
     let namespaced = |f: &Expression<'_>| {
-        let Expression::StaticMemberExpression(member) = f else { return false };
-        let Expression::Identifier(ns) = &member.object else { return false };
-        scope.import(&ns.name).is_some_and(|import| {
-            import.imported.is_none()
-                && apis
-                    .iter()
-                    .any(|&(name, module)| member.property.name == name && import.module == module)
-        })
+        let Expression::StaticMemberExpression(member) = f else { return None };
+        let Expression::Identifier(ns) = &member.object else { return None };
+        let function = member.property.name.as_str();
+        let Some(scope) = scope else {
+            return apis.iter().copied().find(|&(name, _)| function == name);
+        };
+        let import = scope.import(&ns.name).filter(|import| import.imported.is_none())?;
+        apis.iter().copied().find(|&(name, module)| function == name && import.module == module)
     };
-    let callee = &call.callee;
-    named(callee)
-        || namespaced(callee)
-        || matches!(callee, Expression::StaticMemberExpression(required)
-            if required.property.name == "required"
-                && (named(&required.object) || namespaced(&required.object)))
+    if let Some(api) = named(callee).or_else(|| namespaced(callee)) {
+        return Some((api, false));
+    }
+    let Expression::StaticMemberExpression(required) = callee else { return None };
+    if required.property.name != "required" {
+        return None;
+    }
+    named(&required.object).or_else(|| namespaced(&required.object)).map(|api| (api, true))
 }
 
 /// Extract host metadata from a host object expression.
@@ -1696,6 +1848,7 @@ mod tests {
     #[test]
     fn test_extract_directive_selector() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({ selector: '[appHighlight]' })
             class HighlightDirective {}
         "#;
@@ -1708,6 +1861,7 @@ mod tests {
     #[test]
     fn test_extract_directive_standalone_true() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 standalone: true
@@ -1722,6 +1876,7 @@ mod tests {
     #[test]
     fn test_extract_directive_standalone_false() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 standalone: false
@@ -1736,6 +1891,7 @@ mod tests {
     #[test]
     fn test_extract_directive_standalone_defaults_to_implicit() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({ selector: '[appTest]' })
             class TestDirective {}
         "#;
@@ -1752,6 +1908,7 @@ mod tests {
     #[test]
     fn test_extract_directive_export_as() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 exportAs: 'testDir'
@@ -1767,6 +1924,7 @@ mod tests {
     #[test]
     fn test_extract_directive_export_as_multiple() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 exportAs: 'foo, bar, baz'
@@ -1784,6 +1942,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_property_bindings() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 host: {
@@ -1801,6 +1960,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_listeners() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 host: {
@@ -1818,6 +1978,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_static_attributes() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 host: {
@@ -1838,6 +1999,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_computed_key_identifier() {
         let code = r#"
+            import {Directive} from '@angular/core';
             const ATTR = 'data-foo';
             @Directive({ selector: '[d]', host: { [ATTR]: '' } })
             class D {}
@@ -1851,6 +2013,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_value_identifier() {
         let code = r#"
+            import {Directive} from '@angular/core';
             const VAL = 'submit';
             @Directive({ selector: '[d]', host: { type: VAL } })
             class D {}
@@ -1864,6 +2027,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_template_literal_const() {
         let code = r#"
+            import {Directive} from '@angular/core';
             const ATTR = `data-foo`;
             @Directive({ selector: '[d]', host: { [ATTR]: '' } })
             class D {}
@@ -1878,6 +2042,7 @@ mod tests {
     fn test_extract_directive_host_unknown_identifier_dropped() {
         // Unresolved identifier (no matching const) is still dropped — current behavior.
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({ selector: '[d]', host: { [UNKNOWN]: '' } })
             class D {}
         "#;
@@ -1890,6 +2055,7 @@ mod tests {
     fn test_extract_directive_host_exported_const_identifier() {
         // `export const` (not just `const`) in the same file must also be resolved.
         let code = r#"
+            import {Directive} from '@angular/core';
             export const MARKER_ATTR = 'data-marker';
             @Directive({
                 selector: '[marker]',
@@ -1906,6 +2072,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_class_attr() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 host: {
@@ -1922,6 +2089,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_style_attr() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 host: {
@@ -1941,6 +2109,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_directives_simple() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 hostDirectives: [TooltipDirective]
@@ -1956,6 +2125,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_directives_with_mappings() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 hostDirectives: [
@@ -1981,6 +2151,7 @@ mod tests {
     #[test]
     fn test_extract_directive_host_directives_forward_ref() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 hostDirectives: [forwardRef(() => MyDirective)]
@@ -1996,6 +2167,7 @@ mod tests {
     #[test]
     fn test_extract_directive_with_inputs_from_class() {
         let code = r#"
+            import {Directive, Input, Output, HostBinding, HostListener} from '@angular/core';
             @Directive({ selector: '[appTest]' })
             class TestDirective {
                 @Input() name: string;
@@ -2014,6 +2186,7 @@ mod tests {
     #[test]
     fn test_extract_directive_with_outputs_from_class() {
         let code = r#"
+            import {Directive, Input, Output, HostBinding, HostListener} from '@angular/core';
             @Directive({ selector: '[appTest]' })
             class TestDirective {
                 @Output() clicked = new EventEmitter<void>();
@@ -2032,6 +2205,7 @@ mod tests {
     #[test]
     fn test_extract_directive_with_host_binding_decorator() {
         let code = r#"
+            import {Directive, Input, Output, HostBinding, HostListener} from '@angular/core';
             @Directive({ selector: '[appTest]' })
             class TestDirective {
                 @HostBinding('class.active') isActive = false;
@@ -2047,6 +2221,7 @@ mod tests {
     #[test]
     fn test_extract_directive_with_host_listener_decorator() {
         let code = r#"
+            import {Directive, Input, Output, HostBinding, HostListener} from '@angular/core';
             @Directive({ selector: '[appTest]' })
             class TestDirective {
                 @HostListener('click') onClick() {}
@@ -2062,6 +2237,7 @@ mod tests {
     #[test]
     fn test_extract_directive_merges_host_from_decorator_and_class() {
         let code = r#"
+            import {Directive, Input, Output, HostBinding, HostListener} from '@angular/core';
             @Directive({
                 selector: '[appTest]',
                 host: {
@@ -2093,6 +2269,7 @@ mod tests {
     #[test]
     fn test_extract_directive_component_decorator_does_not_match() {
         let code = r#"
+            import {Component} from '@angular/core';
             @Component({ selector: 'app-test', template: '' })
             class TestComponent {}
         "#;
@@ -2114,6 +2291,7 @@ mod tests {
     fn test_empty_directive_decorator() {
         // @Directive({}) - explicit empty config object
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({})
             class TestDirective {}
         "#;
@@ -2128,6 +2306,7 @@ mod tests {
         // @Directive() - no config argument at all
         // This is common for abstract base directive classes
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive()
             class TestDirective {}
         "#;
@@ -2140,6 +2319,7 @@ mod tests {
     #[test]
     fn test_exported_directive() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({ selector: '[appTest]' })
             export class TestDirective {}
         "#;
@@ -2151,6 +2331,7 @@ mod tests {
     #[test]
     fn test_export_default_directive() {
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({ selector: '[appTest]' })
             export default class TestDirective {}
         "#;
@@ -2162,6 +2343,7 @@ mod tests {
     #[test]
     fn test_namespaced_directive_decorator() {
         let code = r#"
+            import * as ng from '@angular/core';
             @ng.Directive({ selector: '[appTest]' })
             class TestDirective {}
         "#;
@@ -2173,6 +2355,7 @@ mod tests {
     #[test]
     fn test_full_directive_decorator() {
         let code = r#"
+            import {Directive, Input, Output, HostBinding, HostListener} from '@angular/core';
             @Directive({
                 selector: '[appComplete]',
                 standalone: true,
@@ -2212,6 +2395,7 @@ mod tests {
         // A directive that does NOT extend any base class
         // should have uses_inheritance = false
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({ selector: '[appTest]' })
             class TestDirective {}
         "#;
@@ -2225,6 +2409,7 @@ mod tests {
         // A directive that extends a base class
         // should have uses_inheritance = true
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({ selector: '[appChild]' })
             class ChildDirective extends BaseDirective {}
         "#;
@@ -2238,6 +2423,7 @@ mod tests {
         // Regression test for issue #285:
         // `@Optional() svc: MyService | null` must resolve the token to `MyService`.
         let code = r#"
+            import {Directive, Optional} from '@angular/core';
             @Directive({ selector: '[myDir]' })
             class MyDirective {
                 constructor(@Optional() private svc: MyService | null) {}
@@ -2268,6 +2454,7 @@ mod tests {
         // The fix: Changed extract_param_token to return ReadVar(TypeName)
         // matching the pattern used by injectable, pipe, and ng_module extractors.
         let code = r#"
+            import {Directive} from '@angular/core';
             @Directive({ selector: '[myDir]' })
             class MyDirective {
                 constructor(private store: Store, private svc: SomeService) {}

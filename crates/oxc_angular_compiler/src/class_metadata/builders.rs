@@ -12,8 +12,8 @@ use oxc_str::Ident;
 
 use crate::component::{ImportMap, NamespaceRegistry, R3DependencyMetadata};
 use crate::directive::{
-    R3InputMetadata, StringConsts, resolve_template_literal, try_parse_signal_input,
-    try_parse_signal_model, try_parse_signal_output, unwrap_initializer_api_expr,
+    QUERY_APIS, R3InputMetadata, StringConsts, initializer_api_call, resolve_template_literal,
+    try_parse_signal_input, try_parse_signal_model, try_parse_signal_output,
 };
 use crate::output::ast::{
     ArrowFunctionBody, ArrowFunctionExpr, LiteralArrayExpr, LiteralExpr, LiteralMapEntry,
@@ -317,6 +317,9 @@ fn build_template_entry<'a>(allocator: &'a Allocator, content: &'a str) -> Liter
 /// using the constructor dependency metadata and namespace registry. This matches
 /// Angular's behavior where type-only imports need namespace imports because
 /// TypeScript types are erased at runtime.
+///
+/// Without the file's imports, a parameter decorator is Angular's by its name;
+/// [`build_ctor_params_metadata_in`] recognises only Angular's, like ngtsc.
 pub fn build_ctor_params_metadata<'a>(
     allocator: &'a Allocator,
     class: &Class<'a>,
@@ -324,6 +327,34 @@ pub fn build_ctor_params_metadata<'a>(
     namespace_registry: &mut NamespaceRegistry<'a>,
     import_map: &ImportMap<'a>,
     source_text: Option<&'a str>,
+) -> Option<OutputExpression<'a>> {
+    build_ctor_params_metadata_in(
+        allocator,
+        class,
+        constructor_deps,
+        namespace_registry,
+        import_map,
+        source_text,
+        None,
+    )
+}
+
+/// [`build_ctor_params_metadata`] for a class in the file `consts` was
+/// collected from.
+///
+/// A parameter decorator (`@Inject()`, `@Optional()`, ...) is listed only when
+/// it's Angular's, imported from `@angular/core` by name, under any alias, or
+/// through a namespace import (see [`crate::directive::angular_param_decorator`]).
+/// Like ngtsc, a parameter that has decorators, none of them Angular's, gets
+/// `decorators: []`.
+pub fn build_ctor_params_metadata_in<'a>(
+    allocator: &'a Allocator,
+    class: &Class<'a>,
+    constructor_deps: Option<&[R3DependencyMetadata<'a>]>,
+    namespace_registry: &mut NamespaceRegistry<'a>,
+    import_map: &ImportMap<'a>,
+    source_text: Option<&'a str>,
+    consts: Option<&StringConsts<'a>>,
 ) -> Option<OutputExpression<'a>> {
     // Find constructor
     let constructor = class.body.body.iter().find_map(|element| {
@@ -358,9 +389,11 @@ pub fn build_ctor_params_metadata<'a>(
 
         map_entries.push(LiteralMapEntry::new(Ident::from("type"), type_expr, false));
 
-        // Extract decorators from the parameter
-        let param_decorators = extract_angular_decorators_from_param(param);
-        if !param_decorators.is_empty() {
+        // Extract decorators from the parameter. ngtsc lists the Angular ones
+        // whenever the parameter has decorators at all (`decorators: []` when
+        // none of them is Angular's).
+        let param_decorators = extract_angular_decorators_from_param(param, consts);
+        if !param.decorators.is_empty() {
             let decorators_array = build_decorator_metadata_array(
                 &allocator,
                 &param_decorators,
@@ -407,11 +440,33 @@ pub fn build_ctor_params_metadata<'a>(
 ///
 /// Creates: `{ propName: [{ type: Input, args: [...] }], ... }`
 /// Returns `None` if no properties have Angular decorators.
+///
+/// Without the file's imports, a signal member is recognised by the name of
+/// the function it calls; [`build_prop_decorators_metadata_in`] recognises
+/// only Angular's, like ngtsc.
 pub fn build_prop_decorators_metadata<'a>(
     allocator: &'a Allocator,
     class: &Class<'a>,
     source_text: Option<&'a str>,
     namespace_registry: &mut NamespaceRegistry<'a>,
+) -> Option<OutputExpression<'a>> {
+    build_prop_decorators_metadata_in(allocator, class, source_text, namespace_registry, None)
+}
+
+/// [`build_prop_decorators_metadata`] for a class in the file `consts` was
+/// collected from.
+///
+/// A member decorator (`@Input()`, ...) is listed only when it's Angular's,
+/// imported from `@angular/core` by name, under any alias, or through a
+/// namespace import. A signal member (`input()`, `viewChild()`, ...) gets a
+/// synthetic decorator only when it calls Angular's function, imported the
+/// same way (`outputFromObservable` from `@angular/core/rxjs-interop`).
+pub fn build_prop_decorators_metadata_in<'a>(
+    allocator: &'a Allocator,
+    class: &Class<'a>,
+    source_text: Option<&'a str>,
+    namespace_registry: &mut NamespaceRegistry<'a>,
+    consts: Option<&StringConsts<'a>>,
 ) -> Option<OutputExpression<'a>> {
     const ANGULAR_PROP_DECORATORS: &[&str] = &[
         "Input",
@@ -444,12 +499,13 @@ pub fn build_prop_decorators_metadata<'a>(
             continue;
         };
 
-        // Filter to Angular property decorators
+        // Filter to Angular property decorators: with the file's imports, only
+        // `@angular/core`'s (see `angular_member_decorator`), like ngtsc.
         let angular_decorators: std::vec::Vec<_> = decorators
             .iter()
-            .filter(|d| {
-                let name = get_decorator_name(d);
-                name.is_some_and(|n| ANGULAR_PROP_DECORATORS.contains(&n))
+            .filter(|d| match consts {
+                Some(_) => crate::directive::angular_member_decorator(d, consts).is_some(),
+                None => get_decorator_name(d).is_some_and(|n| ANGULAR_PROP_DECORATORS.contains(&n)),
             })
             .collect();
 
@@ -480,6 +536,7 @@ pub fn build_prop_decorators_metadata<'a>(
                 &prop_name,
                 source_text,
                 namespace_registry,
+                consts,
             )
         {
             prop_entries.push(LiteralMapEntry::new(prop_name, decorators_array, false));
@@ -505,13 +562,16 @@ fn build_initializer_api_prop_decorators<'a>(
     property_name: &Ident<'a>,
     source_text: Option<&'a str>,
     namespace_registry: &mut NamespaceRegistry<'a>,
+    consts: Option<&StringConsts<'a>>,
 ) -> Option<OutputExpression<'a>> {
     let mut decorators = AllocVec::new_in(&allocator);
 
-    if let Some(input) = try_parse_signal_input(allocator, value, property_name.clone()) {
+    if let Some(input) = try_parse_signal_input(value, property_name.clone(), consts) {
         // input() / input.required() → `Input({ isSignal, alias, required })`
         decorators.push(build_signal_input_decorator(allocator, namespace_registry, &input));
-    } else if let Some(model) = try_parse_signal_model(allocator, value, property_name.clone()) {
+    } else if let Some(model) =
+        try_parse_signal_model(allocator, value, property_name.clone(), consts)
+    {
         // model() → `Input({ isSignal, alias, required })` + `Output("<name>Change")`
         decorators.push(build_signal_input_decorator(allocator, namespace_registry, &model.input));
         decorators.push(build_core_decorator_with_string_arg(
@@ -520,7 +580,8 @@ fn build_initializer_api_prop_decorators<'a>(
             "Output",
             model.output.1.clone(),
         ));
-    } else if let Some((_, binding)) = try_parse_signal_output(value, property_name.clone()) {
+    } else if let Some((_, binding)) = try_parse_signal_output(value, property_name.clone(), consts)
+    {
         // output() / outputFromObservable() → `Output("<binding>")`
         decorators.push(build_core_decorator_with_string_arg(
             &allocator,
@@ -529,7 +590,7 @@ fn build_initializer_api_prop_decorators<'a>(
             binding,
         ));
     } else if let Some(query) =
-        build_signal_query_decorator(allocator, value, source_text, namespace_registry)
+        build_signal_query_decorator(allocator, value, source_text, namespace_registry, consts)
     {
         decorators.push(query);
     }
@@ -589,11 +650,15 @@ fn build_signal_query_decorator<'a>(
     value: &Expression<'a>,
     source_text: Option<&'a str>,
     namespace_registry: &mut NamespaceRegistry<'a>,
+    consts: Option<&StringConsts<'a>>,
 ) -> Option<OutputExpression<'a>> {
-    let Expression::CallExpression(call) = unwrap_initializer_api_expr(value) else {
-        return None;
+    let ((function, _), _, call) = initializer_api_call(value, consts, &QUERY_APIS)?;
+    let decorator_name = match function {
+        "viewChild" => "ViewChild",
+        "viewChildren" => "ViewChildren",
+        "contentChild" => "ContentChild",
+        _ => "ContentChildren",
     };
-    let decorator_name = signal_query_decorator_name(&call.callee)?;
 
     // Predicate: the first positional argument (required), reused as-is. A query with
     // no locator is invalid (ngc errors); skip synthesis rather than emit a malformed
@@ -624,40 +689,6 @@ fn build_signal_query_decorator<'a>(
     )));
 
     Some(build_core_decorator(allocator, namespace_registry, decorator_name, args))
-}
-
-/// Map a signal-query initializer callee to its decorator name, handling the direct
-/// (`viewChild()`), required (`viewChild.required()`), and namespaced (`core.viewChild()`)
-/// forms.
-fn signal_query_decorator_name(callee: &Expression<'_>) -> Option<&'static str> {
-    fn name_of(function: &str) -> Option<&'static str> {
-        match function {
-            "viewChild" => Some("ViewChild"),
-            "viewChildren" => Some("ViewChildren"),
-            "contentChild" => Some("ContentChild"),
-            "contentChildren" => Some("ContentChildren"),
-            _ => None,
-        }
-    }
-
-    match callee {
-        Expression::Identifier(id) => name_of(id.name.as_str()),
-        Expression::StaticMemberExpression(member) => {
-            if member.property.name == "required" {
-                match &member.object {
-                    Expression::Identifier(id) => name_of(id.name.as_str()),
-                    Expression::StaticMemberExpression(inner) => {
-                        name_of(inner.property.name.as_str())
-                    }
-                    _ => None,
-                }
-            } else {
-                // Namespaced call: `core.viewChild(...)`.
-                name_of(member.property.name.as_str())
-            }
-        }
-        _ => None,
-    }
 }
 
 /// Build `{ type: i0.<name>, args: ["<arg>"] }` for a decorator taking a single string.
@@ -896,20 +927,16 @@ fn extract_param_type_expression<'a>(
     }
 }
 
-/// Extract Angular decorators from a constructor parameter.
+/// Extract Angular's decorators from a constructor parameter (see
+/// [`crate::directive::angular_param_decorator`]).
 fn extract_angular_decorators_from_param<'a, 'b>(
     param: &'b FormalParameter<'a>,
+    consts: Option<&StringConsts<'a>>,
 ) -> std::vec::Vec<&'b Decorator<'a>> {
-    const ANGULAR_PARAM_DECORATORS: &[&str] =
-        &["Inject", "Optional", "Self", "SkipSelf", "Host", "Attribute"];
-
     param
         .decorators
         .iter()
-        .filter(|d| {
-            let name = get_decorator_name(d);
-            name.is_some_and(|n| ANGULAR_PARAM_DECORATORS.contains(&n))
-        })
+        .filter(|d| crate::directive::angular_param_decorator(d, consts).is_some())
         .collect()
 }
 

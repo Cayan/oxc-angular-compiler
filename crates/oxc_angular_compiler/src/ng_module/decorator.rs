@@ -11,6 +11,7 @@ use oxc_ast::ast::{
 use oxc_span::Span;
 use oxc_str::Ident;
 
+use crate::directive::StringConsts;
 use crate::factory::R3DependencyMetadata;
 use crate::output::ast::{OutputExpression, ReadVarExpr};
 use crate::output::oxc_converter::convert_oxc_expression;
@@ -178,28 +179,39 @@ impl<'a> NgModuleMetadata<'a> {
 /// })
 /// export class AppModule {}
 /// ```
+///
+/// Without the file's imports, any decorator named `NgModule` counts, and so
+/// does any constructor parameter decorator named `Optional`, `Self`, ...;
+/// [`extract_ng_module_metadata_in`] only counts Angular's, like the compiler.
 pub fn extract_ng_module_metadata<'a>(
     allocator: &'a Allocator,
     class: &'a Class<'a>,
     source_text: Option<&'a str>,
+) -> Option<NgModuleMetadata<'a>> {
+    extract_ng_module_metadata_in(allocator, class, source_text, None)
+}
+
+/// [`extract_ng_module_metadata`] for a class in the file `consts` was
+/// collected from: only Angular's `@NgModule` (imported from `@angular/core`,
+/// see [`crate::directive::find_angular_class_decorator`]) counts.
+pub(crate) fn extract_ng_module_metadata_in<'a>(
+    allocator: &'a Allocator,
+    class: &'a Class<'a>,
+    source_text: Option<&'a str>,
+    consts: Option<&StringConsts<'_>>,
 ) -> Option<NgModuleMetadata<'a>> {
     // Get the class name
     let class_name: Ident<'a> = class.id.as_ref()?.name.clone().into();
     let class_span = class.span;
 
     // Find the @NgModule decorator
-    let ng_module_decorator = find_ng_module_decorator(&class.decorators)?;
+    let ng_module_decorator = find_ng_module_decorator(&class.decorators, consts)?;
 
     // Get the decorator call arguments
     let call_expr = match &ng_module_decorator.expression {
         Expression::CallExpression(call) => call,
         _ => return None,
     };
-
-    // Verify it's calling 'NgModule'
-    if !is_ng_module_call(&call_expr.callee) {
-        return None;
-    }
 
     // Get the first argument (the config object)
     let config_arg = call_expr.arguments.first()?;
@@ -274,15 +286,21 @@ pub fn extract_ng_module_metadata<'a>(
     }
 
     // Extract constructor dependencies
-    metadata.deps = extract_constructor_deps(allocator, class);
+    metadata.deps = extract_constructor_deps(allocator, class, consts);
 
     Some(metadata)
 }
 
-/// Find the @NgModule decorator in a list of decorators.
+/// Find the @NgModule decorator in a list of decorators. With the file's
+/// `consts`, only Angular's (imported from `@angular/core`); without them, any
+/// named `NgModule`.
 pub(crate) fn find_ng_module_decorator<'a>(
     decorators: &'a [Decorator<'a>],
+    consts: Option<&StringConsts<'_>>,
 ) -> Option<&'a Decorator<'a>> {
+    if let Some(consts) = consts {
+        return crate::directive::find_angular_class_decorator(decorators, "NgModule", consts);
+    }
     decorators.iter().find(|d| match &d.expression {
         Expression::CallExpression(call) => is_ng_module_call(&call.callee),
         Expression::Identifier(id) => id.name == "NgModule",
@@ -293,9 +311,11 @@ pub(crate) fn find_ng_module_decorator<'a>(
 /// Find the span of the @NgModule decorator on a class.
 ///
 /// Returns the span including any leading whitespace/newlines that should be removed
-/// along with the decorator.
+/// along with the decorator. Without the file's imports, this matches any
+/// decorator named `NgModule`; the compiler only takes one imported from
+/// `@angular/core`.
 pub fn find_ng_module_decorator_span(class: &Class<'_>) -> Option<Span> {
-    find_ng_module_decorator(&class.decorators).map(|d| d.span)
+    find_ng_module_decorator(&class.decorators, None).map(|d| d.span)
 }
 
 /// Check if a callee expression is a call to 'NgModule'.
@@ -417,6 +437,7 @@ fn extract_identifier_array<'a>(
 pub fn extract_constructor_deps<'a>(
     allocator: &'a Allocator,
     class: &'a Class<'a>,
+    consts: Option<&StringConsts<'_>>,
 ) -> Option<Vec<'a, R3DependencyMetadata<'a>>> {
     // Find the constructor method
     let constructor = class.body.body.iter().find_map(|element| {
@@ -433,17 +454,20 @@ pub fn extract_constructor_deps<'a>(
     let mut deps = Vec::with_capacity_in(params.items.len(), &allocator);
 
     for param in &params.items {
-        let dep = extract_param_dependency(allocator, param);
+        let dep = extract_param_dependency(allocator, param, consts);
         deps.push(dep);
     }
 
     Some(deps)
 }
 
-/// Extract dependency metadata from a single constructor parameter.
+/// Extract dependency metadata from a single constructor parameter. With the
+/// file's `consts`, only Angular's parameter decorators count, imported from
+/// `@angular/core` (see [`crate::directive::angular_param_decorator`]).
 fn extract_param_dependency<'a>(
     allocator: &'a Allocator,
     param: &oxc_ast::ast::FormalParameter<'a>,
+    consts: Option<&StringConsts<'_>>,
 ) -> R3DependencyMetadata<'a> {
     // Extract flags from decorators
     let mut optional = false;
@@ -453,8 +477,8 @@ fn extract_param_dependency<'a>(
     let mut attribute_name: Option<Ident<'a>> = None;
 
     for decorator in &param.decorators {
-        if let Some(name) = get_decorator_name(&decorator.expression) {
-            match name.as_str() {
+        if let Some(name) = crate::directive::angular_param_decorator(decorator, consts) {
+            match name {
                 "Optional" => optional = true,
                 "SkipSelf" => skip_self = true,
                 "Self" => self_ = true,
@@ -502,23 +526,6 @@ fn extract_param_dependency<'a>(
         self_,
         skip_self,
         type_only_invalid: false,
-    }
-}
-
-/// Get the name of a decorator from its expression.
-fn get_decorator_name<'a>(expr: &'a Expression<'a>) -> Option<Ident<'a>> {
-    match expr {
-        // @Optional
-        Expression::Identifier(id) => Some(id.name.clone().into()),
-        // @Optional()
-        Expression::CallExpression(call) => {
-            if let Expression::Identifier(id) = &call.callee {
-                Some(id.name.clone().into())
-            } else {
-                None
-            }
-        }
-        _ => None,
     }
 }
 
