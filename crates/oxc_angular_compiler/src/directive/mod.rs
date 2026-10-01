@@ -31,12 +31,15 @@ pub use decorator::{
     find_directive_decorator_span,
 };
 pub(crate) use decorator::{extract_string_value, resolve_template_literal};
-pub(crate) use decorator::{merge_by_class_property, parse_decorator_io};
+pub(crate) use decorator::{
+    merge_by_class_property, parse_decorator_io, resolve_member_transforms,
+};
 pub use definition::{DirectiveDefinitions, generate_directive_definitions};
 pub use metadata::{
     QueryPredicate, R3DirectiveMetadata, R3DirectiveMetadataBuilder, R3HostDirectiveMetadata,
     R3HostMetadata, R3InputMetadata, R3QueryMetadata,
 };
+pub(crate) use property_decorators::CoreNamespaces;
 pub use property_decorators::{
     extract_content_queries, extract_host_bindings, extract_host_listeners, extract_input_metadata,
     extract_output_metadata, extract_view_queries,

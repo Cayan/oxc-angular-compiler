@@ -27,6 +27,121 @@
       "diagnosticSpans": []
     },
     {
+      "name": "ngtsc_spec: should produce a diagnostic if the transform value is not a function",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n          import {Directive, Input} from '@angular/core';\n\n          const NOT_A_FUNCTION: any = null!;\n\n          @Directive({selector: '[dir]'})\n          export class Dir {\n            @Input({transform: NOT_A_FUNCTION}) value!: number;\n          }\n        "
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'null'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[196, 223]]
+    },
+    {
+      "name": "ngtsc_spec: should produce a diagnostic if the transform value in the inputs array is not a function",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n          import {Directive, Input} from '@angular/core';\n\n          const NOT_A_FUNCTION: any = null!;\n\n          @Directive({\n            selector: '[dir]',\n            inputs: [{\n              name: 'value',\n              transform: NOT_A_FUNCTION\n            }]\n          })\n          export class Dir {\n            value!: number;\n          }\n        "
+      },
+      "diagnostics": [
+        "Transform of value at position 0 of @Directive.inputs array must be a function Value is of type 'null'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[180, 266]]
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if the transform function first parameter has no arguments",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n              import {Directive, Input} from '@angular/core';\n\n              @Directive({selector: '[dir]'})\n              export class Dir {\n                @Input({transform: (val) => 1}) value!: number;\n              }\n            "
+      },
+      "diagnostics": [
+        "Input transform function first parameter must have a type Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[178, 188]]
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if the transform function is generic",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n          import {Directive, Input} from '@angular/core';\n\n          @Directive({selector: '[dir]'})\n          export class Dir {\n            @Input({transform: <T>(val: T) => 1}) value!: number;\n          }\n        "
+      },
+      "diagnostics": [
+        "Input transform function cannot be generic Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[162, 178]]
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if there is a conflicting coercion member",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n          import {Directive, Input} from '@angular/core';\n\n          @Directive({selector: '[dir]'})\n          export class Dir {\n            @Input({transform: (val: string) => 1}) value!: number;\n\n            static ngAcceptInputType_value: boolean;\n          }\n        "
+      },
+      "diagnostics": [
+        "Class cannot have both a transform function on Input value and a static member called ngAcceptInputType_value"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[162, 180]]
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if transform type is not exported",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n          import {Directive, Input} from '@angular/core';\n\n          interface InternalType {\n            foo: boolean;\n          }\n\n          @Directive({selector: '[dir]'})\n          export class Dir {\n            @Input({transform: (val: InternalType) => 1}) val!: number;\n          }\n        "
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[242, 254]]
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if the transform value is not a function",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n          import {Directive, Input} from '@angular/core';\n\n          function createTransform(outerValue: number) {\n            return (innerValue: string) => outerValue;\n          }\n\n          @Directive({selector: '[dir]'})\n          export class Dir {\n            @Input({transform: createTransform(1)}) value!: number;\n          }\n        "
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[287, 305]]
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if the first parameter of a transform is a spread",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n          import {Directive, Input} from '@angular/core';\n\n          function toNumber(...value: (string | boolean)[]) { return 1; }\n\n          @Directive({standalone: true})\n          export class Dir {\n            @Input({transform: toNumber}) value!: number;\n          }\n        "
+      },
+      "diagnostics": [
+        "Input transform function first parameter cannot be a spread parameter Value is a reference to 'toNumber'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[70, 133]]
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if a transform function has multiple signatures",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "test.ts": "\n          import {Directive, Input} from '@angular/core';\n\n          function toNumber(value: boolean): number;\n          function toNumber(value: string): number;\n          function toNumber(value: boolean | string) { return 1; }\n\n          @Directive({standalone: true})\n          export class Dir {\n            @Input({transform: toNumber}) value!: number;\n          }\n        "
+      },
+      "diagnostics": [
+        "Input transform function cannot have multiple signatures Value is a reference to 'toNumber'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[70, 112]]
+    },
+    {
       "name": "ngtsc_spec: should wrap \"inputs\" and \"outputs\" keys if they contain unsafe characters",
       "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
       "files": {
@@ -164,6 +279,33 @@
       "diagnosticSpans": []
     },
     {
+      "name": "ngtsc_spec: should produce a diangostic if the transform function type cannot be referenced from the source file",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "util.ts": "\n            interface InternalType {\n              foo: boolean;\n            }\n\n            export function toNumber(val: InternalType) { return 1; }\n          ",
+        "test.ts": "\n            import {Directive, Input} from '@angular/core';\n            import {toNumber} from './util';\n\n            @Directive({selector: '[dir]'})\n            export class Dir {\n              @Input({transform: toNumber}) value!: number;\n            }\n          "
+      },
+      "skip": "needs declarations from another file; oxc compiles one file at a time (imported consts, types and transforms are opaque)"
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if a sub-type of the transform function cannot be referenced from the source file",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "util.ts": "\n              interface InternalType {\n                foo: boolean;\n              }\n\n              export function toNumber(val: {value: InternalType}) { return 1; }\n            ",
+        "test.ts": "\n              import {Directive, Input} from '@angular/core';\n              import {toNumber} from './util';\n\n              @Directive({selector: '[dir]'})\n              export class Dir {\n                @Input({transform: toNumber}) value!: number;\n              }\n            "
+      },
+      "skip": "needs declarations from another file; oxc compiles one file at a time (imported consts, types and transforms are opaque)"
+    },
+    {
+      "name": "ngtsc_spec: should produce a diangostic if a generic parameter of the transform function cannot be referenced from the source file",
+      "origin": "packages/compiler-cli/test/ngtsc/ngtsc_spec.ts",
+      "files": {
+        "util.ts": "\n              export interface GenericWrapper<T> {\n                value: T;\n              }\n\n              interface InternalType {\n                foo: boolean;\n              }\n\n              export function toNumber(val: GenericWrapper<InternalType>) { return 1; }\n            ",
+        "test.ts": "\n              import {Directive, Input} from '@angular/core';\n              import {toNumber} from './util';\n\n              @Directive({selector: '[dir]'})\n              export class Dir {\n                @Input({transform: toNumber}) value!: number;\n              }\n            "
+      },
+      "skip": "needs declarations from another file; oxc compiles one file at a time (imported consts, types and transforms are opaque)"
+    },
+    {
       "name": "authoring_inputs_spec: should fail if signal input is also declared in `inputs` decorator field.",
       "origin": "packages/compiler-cli/test/ngtsc/authoring_inputs_spec.ts",
       "files": {
@@ -227,6 +369,36 @@
       "diagnosticSpans": []
     },
     {
+      "name": "acceptance/inherit_definition_feature_spec: inputs re-declared in the `inputs` array",
+      "origin": "packages/core/test/acceptance/inherit_definition_feature_spec.ts",
+      "files": {
+        "test.ts": "import {Component, Directive, Input} from '@angular/core';\n\n@Directive()\nclass Base {\n  @Input({transform: (v) => `${v}-transformed`}) someInput: string = '';\n}\n\n@Directive({\n  selector: 'dir',\n  inputs: ['someInput'],\n})\nclass ActualDir extends Base {}\n\n@Component({\n  imports: [ActualDir],\n  template: `<dir someInput=\"newValue\"></dir>`,\n})\nexport class TestCmp {}\n"
+      },
+      "diagnostics": [
+        "Input transform function first parameter must have a type Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[107, 132]]
+    },
+    {
+      "name": "probe: transform-inlineArrowUntyped",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: (v) => 1}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: (v) => 1}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform function first parameter must have a type Value could not be determined statically.",
+        "Input transform function first parameter must have a type Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [135, 143],
+        [217, 225]
+      ]
+    },
+    {
       "name": "probe: transform-inlineArrowNoParams",
       "origin": "probe",
       "files": {
@@ -247,6 +419,40 @@
       },
       "dtsImports": [],
       "diagnosticSpans": []
+    },
+    {
+      "name": "probe: transform-constArrowTyped",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nexport const f = (v: string) => 1;\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: f}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically.",
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [169, 170],
+        [244, 245]
+      ]
+    },
+    {
+      "name": "probe: transform-constArrowAnnotated",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nexport const f: (v: string) => number = (v) => 1;\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: f}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically.",
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [184, 185],
+        [259, 260]
+      ]
     },
     {
       "name": "probe: transform-importedFn",
@@ -271,6 +477,57 @@
       "diagnosticSpans": []
     },
     {
+      "name": "probe: transform-generic",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nexport function f<T>(v: T) { return 1; }\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: f}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform function cannot be generic Value is a reference to 'f'.",
+        "Input transform function cannot be generic Value is a reference to 'f'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [66, 106],
+        [66, 106]
+      ]
+    },
+    {
+      "name": "probe: transform-overloaded",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nexport function f(v: string): number;\nexport function f(v: number): number;\nexport function f(v: any) { return 1; }\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: f}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform function cannot have multiple signatures Value is a reference to 'f'.",
+        "Input transform function cannot have multiple signatures Value is a reference to 'f'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [66, 103],
+        [66, 103]
+      ]
+    },
+    {
+      "name": "probe: transform-spread",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nexport function f(...v: string[]) { return 1; }\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: f}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform function first parameter cannot be a spread parameter Value is a reference to 'f'.",
+        "Input transform function first parameter cannot be a spread parameter Value is a reference to 'f'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [66, 113],
+        [66, 113]
+      ]
+    },
+    {
       "name": "probe: transform-thisOnly",
       "origin": "probe",
       "files": {
@@ -291,6 +548,430 @@
       },
       "dtsImports": [],
       "diagnosticSpans": []
+    },
+    {
+      "name": "probe: transform-call",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nexport function mk() { return (v: string) => 1; }\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: mk()}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: mk()}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically.",
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [184, 188],
+        [262, 266]
+      ]
+    },
+    {
+      "name": "probe: transform-staticMethod",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nexport class U { static f(v: string) { return 1; } }\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: U.f}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: U.f}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "skip": "ngtsc emits `f` for `transform: U.f` (a static method), an identifier that isn't in scope, so its output throws a ReferenceError when the module loads; oxc keeps `U.f`"
+    },
+    {
+      "name": "probe: transform-classRef",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nexport class U {}\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: U}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: U}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is a reference to 'U'.",
+        "Input transform must be a function Value is a reference to 'U'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [66, 83],
+        [66, 83]
+      ]
+    },
+    {
+      "name": "probe: transform-nullLit",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: null}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: null}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type 'null'.",
+        "Transform of value at position 0 of @Directive.inputs array must be a function Value is of type 'null'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [123, 140],
+        [189, 219]
+      ]
+    },
+    {
+      "name": "probe: transform-constNull",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\nconst N: any = null!;\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: N}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: N}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type 'null'.",
+        "Transform of value at position 0 of @Directive.inputs array must be a function Value is of type 'null'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [144, 158],
+        [207, 234]
+      ]
+    },
+    {
+      "name": "probe: transform-stringLit",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: \"x\"}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: \"x\"}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type 'string'.",
+        "Transform of value at position 0 of @Directive.inputs array must be a function Value is of type 'string'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [123, 139],
+        [188, 217]
+      ]
+    },
+    {
+      "name": "probe: transform-objLit",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: {a: 1}}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: {a: 1}}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type '{ a: number }'.",
+        "Transform of value at position 0 of @Directive.inputs array must be a function Value is of type '{ a: number }'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [123, 142],
+        [191, 223]
+      ]
+    },
+    {
+      "name": "probe: transform-arrLit",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: [1]}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: [1]}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type '[number]'.",
+        "Transform of value at position 0 of @Directive.inputs array must be a function Value is of type '[number]'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [123, 139],
+        [188, 217]
+      ]
+    },
+    {
+      "name": "probe: transform-undef",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: undefined}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: undefined}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type 'undefined'.",
+        "Transform of value at position 0 of @Directive.inputs array must be a function Value is of type 'undefined'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [123, 145],
+        [194, 229]
+      ]
+    },
+    {
+      "name": "probe: transform-nonExportedParamType",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\ninterface Hidden { a: 1 }\nexport function f(v: Hidden) { return 1; }\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: f}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function",
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [113, 119],
+        [113, 119]
+      ]
+    },
+    {
+      "name": "probe: transform-unknownIdent",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from \"@angular/core\";\ndeclare const f: any;\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n@Directive({selector: \"[e]\", inputs: [{name: \"w\", transform: f}]})\nexport class Dir2 { w: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is a reference to 'f'.",
+        "Input transform must be a function Value is a reference to 'f'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [
+        [80, 86],
+        [80, 86]
+      ]
+    },
+    {
+      "name": "probe: eval-letArrow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nlet f = (v: string) => 1;\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[181, 182]]
+    },
+    {
+      "name": "probe: eval-varFn",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nvar f = function (v: string) { return 1; };\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: f}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[199, 200]]
+    },
+    {
+      "name": "probe: eval-staticMissing",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nexport class U {}\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: U.nope}) v: any; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'undefined'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[161, 180]]
+    },
+    {
+      "name": "probe: eval-instanceMethod",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nexport class U { f(v: string) { return 1; } }\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: U.prototype.f}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[201, 214]]
+    },
+    {
+      "name": "probe: eval-nsImportMember",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: core.booleanAttribute}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform function could not be referenced Value is a reference to 'booleanAttribute'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at `booleanAttribute`'s declaration in @angular/core's .d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: eval-nsImport",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: core}) v: any; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type '(module)'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[144, 161]]
+    },
+    {
+      "name": "probe: eval-objMember",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nconst T = { f: (v: string) => 1 };\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: T.f}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[190, 193]]
+    },
+    {
+      "name": "probe: eval-typeofOp",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: typeof 1}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[156, 164]]
+    },
+    {
+      "name": "probe: eval-tpl",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nconst X = \"x\";\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: `a${X}`}) v: any; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'string'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[158, 178]]
+    },
+    {
+      "name": "probe: eval-tplDyn",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\ndeclare const X: any;\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: `a${X}`}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[177, 184]]
+    },
+    {
+      "name": "probe: eval-newExpr",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nexport class U {}\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: new U()}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[173, 180]]
+    },
+    {
+      "name": "probe: eval-descObjNested",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: {a: 1, \"b-c\": \"x\", d: {e: 1}, f: [1], g: () => 1, h: null, i: undefined, j: true}}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type '{ a: number; 'b-c': string; d: object; f: Array; g: (not statically analyzable); h: null; i: undefined; j: boolean }'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[144, 238]]
+    },
+    {
+      "name": "probe: eval-descObjRefs",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nexport class U {}\nexport function g(v: string) { return 1; }\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: {a: U, b: g, c: core, d: Number}}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type '{ a: U; b: g; c: (module); d: Number }'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[204, 249]]
+    },
+    {
+      "name": "probe: eval-descArr",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: [1, \"a\", [2], {x: 1}, () => 1, null]}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type '[number, string, Array, object, (not statically analyzable), null]'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[144, 193]]
+    },
+    {
+      "name": "probe: eval-descEmptyObj",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: {}}) v: any; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type '{}'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[144, 159]]
+    },
+    {
+      "name": "probe: eval-descEmptyArr",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: []}) v: any; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type '[]'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[144, 159]]
+    },
+    {
+      "name": "probe: eval-descSpreadObj",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nconst O = {a: 1};\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: {...O, b: \"x\"}}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value is of type '{ a: number; b: string }'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[161, 188]]
+    },
+    {
+      "name": "probe: eval-descSpreadArr",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nconst A = [1];\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: [...A, \"x\"]}) v: any; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type '[number, string]'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[158, 182]]
+    },
+    {
+      "name": "probe: eval-descComputedKey",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\nconst K = \"k\";\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: {[K]: 1}}) v: any; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type '{ k: number }'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[158, 179]]
+    },
+    {
+      "name": "probe: eval-descMethodShorthand",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: {m() { return 1; }}}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[156, 175]]
     },
     {
       "name": "probe: eval-inputsObj",
@@ -397,6 +1078,17 @@
       "diagnosticSpans": [[125, 131]]
     },
     {
+      "name": "probe: eval-orderFieldBeforeOutputsMeta",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\nimport * as core from \"@angular/core\";\n\n@Directive({selector: \"[d]\", outputs: [3]})\nexport class Dir { @Input({transform: null}) v: any; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'null'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[158, 175]]
+    },
+    {
       "name": "probe: resolve-fnMultiStmt",
       "origin": "probe",
       "files": {
@@ -469,6 +1161,71 @@
       },
       "dtsImports": [],
       "diagnosticSpans": []
+    },
+    {
+      "name": "probe: resolve-transformIndexed",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: [(v: string) => 1][0]}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[117, 138]]
+    },
+    {
+      "name": "probe: resolve-transformCondArrow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: true ? (v: string) => 1 : null}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[117, 147]]
+    },
+    {
+      "name": "probe: resolve-transformParen",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: ((v: string) => 1)}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[117, 135]]
+    },
+    {
+      "name": "probe: resolve-transformAs",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: ((v: string) => 1) as any}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[117, 142]]
+    },
+    {
+      "name": "probe: resolve-transformObjInline",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from \"@angular/core\";\n\n@Directive({selector: \"[d]\"})\nexport class Dir { @Input({transform: ({f: (v: string) => 1}).f}) v: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[117, 142]]
     },
     {
       "name": "probe: resolve-inputsTplName",
@@ -599,6 +1356,28 @@
       },
       "dtsImports": [],
       "diagnosticSpans": []
+    },
+    {
+      "name": "probe: review-namespacedInput",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nimport * as core from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir { @core.Input({transform: null}) v: any; }"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'null'."],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[166, 183]]
+    },
+    {
+      "name": "probe: review-aliasedInput",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nimport {Input as In} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir { @In({transform: null}) v: any; }"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'null'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "member decorators imported under another name (`import {Input as In}`) are matched by name throughout oxc, so `@In` isn't recognised as `@Input`"
     },
     {
       "name": "probe: review-numberSmall",
@@ -4075,6 +4854,2164 @@
       "diagnosticSpans": []
     },
     {
+      "name": "probe: transform-typeofEnumKeyof",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nenum Size { S, M }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: keyof typeof Size) => Size[v]}) x!: Size;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>Size[v]]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-typeofClass",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass Local {}\nexport function toNum(v: typeof Local) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-instanceTypeTypeof",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass Local {}\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: InstanceType<typeof Local>) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>1]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-returnTypeTypeofMember",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass Local { static create(v: string) { return new Local(); } }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: ReturnType<typeof Local.create>) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>1]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-qualifiedClassNamespace",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass C {}\nnamespace C { export type T = string; }\nexport function toNum(v: C.T) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-qualifiedInterfaceNamespace",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo { a: string }\nnamespace Foo { export type T = string; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: Foo.T) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>1]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-typeofEnum",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nenum E { A }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: typeof E) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>1]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-enumUnexported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nenum E { A }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: E) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[153, 154]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-indexedAccessUnexported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo { a: string }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: Foo['a']) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[168, 176]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-typeArgUnexported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo {}\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: Map<string, Foo>) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[157, 173]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-typeLiteralMethodUnexported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo {}\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: {m(x: Foo): void}) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[157, 174]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-overloadImplTypeUnexported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo { a: string }\nexport function toNum(v: string): number;\nexport function toNum(v: string | Foo): number { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-overloadFirstTypeUnexported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo {}\nexport function toNum(v: Foo): number;\nexport function toNum(v: any) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[108, 111]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-overloadFirstUntyped",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport function toNum(v): number;\nexport function toNum(v: string) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform function first parameter must have a type Value is a reference to 'toNum'."
+      ],
+      "diagnosticSpans": [[66, 99]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-overloadFirstNoParams",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport function toNum(): number;\nexport function toNum(v?: string) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_x": "staticngAcceptInputType_x:unknown;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-overloadFirstSpread",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport function toNum(...v: string[]): number;\nexport function toNum(v: any) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform function first parameter cannot be a spread parameter Value is a reference to 'toNum'."
+      ],
+      "diagnosticSpans": [[66, 112]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-overloadStaticFirstTypeUnexported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo {}\nclass U { static c(v: Foo): number; static c(v: any) { return 1; } }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: U.c}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[105, 108]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-constTernary",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nconst isProd = false;\nexport function a(v: string) { return 1; }\nexport function b(v: string) { return 2; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: isProd ? a : b}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",b]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-literalTernary",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport function toNum(v: string) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: true ? toNum : toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-optionalChain",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nfunction toNum(v: string) { return 1; }\nconst T = { f: toNum };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: T?.f}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-optionalChainExported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport function toNum(v: string) { return 1; }\nconst T = { f: toNum };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: T?.f}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-ternaryMeta",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nconst isProd = false;\nexport function a(v: string) { return 1; }\nexport function b(v: string) { return 2; }\n@Directive({selector: '[d]', inputs: [{name: 'x', transform: isProd ? a : b}]})\nexport class Dir {\n  x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",b]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-clashImported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: booleanAttribute}) x!: boolean;\n  static ngAcceptInputType_x: boolean | string;\n}\n"
+      },
+      "diagnostics": [
+        "Class cannot have both a transform function on Input x and a static member called ngAcceptInputType_x"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in @angular/core's .d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-clashImportedMeta",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]', inputs: [{name: 'x', transform: booleanAttribute}]})\nexport class Dir {\n  x!: boolean;\n  static ngAcceptInputType_x: boolean | string;\n}\n"
+      },
+      "diagnostics": [
+        "Class cannot have both a transform function on Input x and a static member called ngAcceptInputType_x"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in @angular/core's .d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-clashGlobal",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: parseInt}) x!: number;\n  static ngAcceptInputType_x: string;\n}\n"
+      },
+      "diagnostics": [
+        "Class cannot have both a transform function on Input x and a static member called ngAcceptInputType_x"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in TypeScript's lib.es5.d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-letUninitTyped",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nlet f: (v: string) => number;\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: f}) x!: number;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'undefined'."],
+      "diagnosticSpans": [[154, 168]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-letUninit",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nlet f;\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: f}) x!: number;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'undefined'."],
+      "diagnosticSpans": [[131, 145]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-enumAsTransform",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nenum E { A }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: E}) x!: number;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type '{ A: E }'."],
+      "diagnosticSpans": [[137, 151]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-staticGetter",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass U { static get c() { return (v: string) => 1; } }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: U.c}) x!: number;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'c'."],
+      "diagnosticSpans": [[76, 119]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-interfaceExportedLater",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo { a: string }\nexport function toNum(v: Foo) { return 1; }\nexport { Foo };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[119, 122]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-typeExportedLater",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ntype Foo = { a: string };\nexport function toNum(v: Foo) { return 1; }\nexport type { Foo };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[117, 120]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-interfaceExportedAs",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo { a: string }\nexport function toNum(v: Foo) { return 1; }\nexport { Foo as Bar };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[119, 122]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-interfaceExportDefault",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ninterface Foo {}\nexport function toNum(v: Foo) { return 1; }\nexport default Foo;\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[108, 111]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-classExportedLater",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass Foo {}\nexport function toNum(v: Foo) { return 1; }\nexport { Foo };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-classExportedAs",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass C {}\nexport { C as D };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: C) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>1]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-enumExportedLater",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nenum E { A }\nexport { E };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: E) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>1]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-classExportDefault",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport default class Foo {}\nexport function toNum(v: Foo) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-classExportDefaultLater",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass Foo {}\nexport function toNum(v: Foo) { return 1; }\nexport default Foo;\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",toNum]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-classTypeParam",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir<Tp> {\n  @Input({transform: (v: Tp) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[144, 146]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-classTypeParamShadowsExported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport interface Foo {}\n@Directive({selector: '[d]'})\nexport class Dir<Foo> {\n  @Input({transform: (v: Foo) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[169, 172]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-mappedTypeParam",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: {[K in 'a' | 'b']: K}) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[140, 161]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-inferTypeParam",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: string extends infer U ? U : never) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[140, 174]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-fnTypeParam",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: <T>(x: T) => T) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[140, 154]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-fnTypeParamShadowsExported",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport interface Foo {}\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: <Foo>(x: Foo) => void) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[164, 185]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-methodSigTypeParam",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: {m<T>(x: T): void}) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[140, 158]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-conditionalFalseBranchOuter",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport interface Foo {}\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: string extends infer U ? U : Foo) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[164, 196]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-declareGlobal",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\ndeclare global { interface Gl { a: string } }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: Gl) => 1}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a type declared in `declare global` is a new global unless it augments one of TypeScript's lib types, which ngtsc resolves to the lib file; oxc doesn't read the lib files, so it can't tell the two apart and accepts both"
+    },
+    {
+      "name": "probe: transform-globalNumber",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: Number}) x!: number;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'Number'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in TypeScript's lib.es5.d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-globalParseInt",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: parseInt}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",parseInt]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-satisfiesFn",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nexport function toNum(v: string) { return 1; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: toNum satisfies Function}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[183, 207]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-namespaceFn",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nnamespace NS { export function f(v: string) { return 1; } }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: NS.f}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[196, 200]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-nsClash",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\nimport * as u from './util';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: u.toNum}) x!: number;\n  static ngAcceptInputType_x: string;\n}\n",
+        "util.ts": "export function toNum(v: string) { return 1; }\n"
+      },
+      "diagnostics": [
+        "Class cannot have both a transform function on Input x and a static member called ngAcceptInputType_x"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in util.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-nsGeneric",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\nimport * as u from './util';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: u.g}) x!: number;\n}\n",
+        "util.ts": "export function g<T>(v: T) { return 1; }\n"
+      },
+      "diagnostics": ["Input transform function cannot be generic Value is a reference to 'g'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "needs declarations from another file; oxc compiles one file at a time (imported consts, types and transforms are opaque)"
+    },
+    {
+      "name": "probe: transform-coreNamespaceMembers",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import * as core from '@angular/core';\n@core.Component({selector: 'c', template: '<div #ref></div>'})\nexport class Cmp {\n  @core.Input({transform: (v: string) => 1}) value!: number;\n  @core.ViewChild('ref') ref: any;\n  @core.Output() changed = new core.EventEmitter<string>();\n  @core.HostBinding('class.a') a = true;\n  @core.HostListener('click') onClick() {}\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Cmp": {
+          "inputs": "{value:[2,\"value\",\"value\",(v)=>1]}",
+          "outputs": "{changed:\"changed\"}",
+          "viewQuery": "{if(rf&1){i0.ɵɵviewQuery([\"ref\"],5);}if(rf&2){let_t;i0.ɵɵqueryRefresh(_t=i0.ɵɵloadQuery())&&(ctx.ref=_t.first);}}",
+          "dts:ɵcmp": "staticɵcmp:i0.ɵɵComponentDeclaration<Cmp,\"c\",never,{\"value\":{\"alias\":\"value\";\"required\":false;};},{\"changed\":\"changed\";},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-foreignNamespaceMembers",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Component, Input} from '@angular/core';\nimport * as foreign from 'foreign-decorators';\n@Component({selector: 'c', template: '<div #ref></div>'})\nexport class Cmp {\n  @Input() real!: string;\n  @foreign.Input({transform: 5}) value!: string;\n  @foreign.ViewChild('ref') ref: any;\n  @foreign.Output() changed: any;\n  @foreign.HostBinding('class.a') a = true;\n  @foreign.HostListener('click') onClick() {}\n}\n",
+        "node_modules/foreign-decorators/index.d.ts": "export declare function Input(o?: any): PropertyDecorator;\nexport declare function Output(): PropertyDecorator;\nexport declare function ViewChild(s: string): PropertyDecorator;\nexport declare function HostBinding(s: string): PropertyDecorator;\nexport declare function HostListener(s: string): MethodDecorator;\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Cmp": {
+          "inputs": "{real:\"real\"}",
+          "dts:ɵcmp": "staticɵcmp:i0.ɵɵComponentDeclaration<Cmp,\"c\",never,{\"real\":{\"alias\":\"real\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-localObjectNamespaceMember",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nconst other = { Input: (o?: any) => (t: any, k: string) => {} };\n@Directive({selector: '[d]'})\nexport class Dir {\n  @other.Input({transform: 5}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-staticPropNoInit",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass U { static c: (v: string) => number; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: U.c}) x!: number;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'c'."],
+      "diagnosticSpans": [[76, 108]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-staticSetter",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nclass U { static set c(v: any) {} }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: U.c}) x!: number;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'c'."],
+      "diagnosticSpans": [[76, 99]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-globalMathRound",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: Math.round}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[136, 146]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-globalJsonParse",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: JSON.parse}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[136, 146]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-globalString",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: String}) x!: number;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'String'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in TypeScript's lib.es5.d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-globalIsNaN",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: isNaN}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",isNaN]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-globalEscape",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: escape}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",escape]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-globalEval",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: eval}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",eval]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-globalDecodeURI",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: decodeURI}) x!: number;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",decodeURI]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-globalNumberClash",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: Number}) x!: number;\n  static ngAcceptInputType_x: string;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'Number'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in TypeScript's lib.es5.d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-globalParseIntStatic",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: parseInt}) x!: number;\n  static ngAcceptInputType_y: string;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",parseInt]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-instanceClash",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: (v: string) => 1}) x!: number;\n  ngAcceptInputType_x: string;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>1]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: eval-inputsMathPI",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]', inputs: [Math.PI]})\nexport class Dir {}\n"
+      },
+      "diagnostics": [
+        "@Directive.inputs array can only contain strings or object literals Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[103, 112]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: eval-inputsMath",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]', inputs: [Math]})\nexport class Dir {}\n"
+      },
+      "diagnostics": [
+        "@Directive.inputs array can only contain strings or object literals Value is a reference to 'Math'."
+      ],
+      "diagnosticSpans": [[103, 109]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: eval-inputsNumberMax",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]', inputs: [{name: Number.MAX_VALUE}]})\nexport class Dir {}\n"
+      },
+      "diagnostics": [
+        "Value at position 0 of @Directive.inputs array must have a \"name\" property Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[103, 129]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: eval-inputsObjKeys",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\n@Directive({selector: '[d]', inputs: [Object.keys]})\nexport class Dir {}\n"
+      },
+      "diagnostics": [
+        "@Directive.inputs array can only contain strings or object literals Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[103, 116]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-constMathRound",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, booleanAttribute} from '@angular/core';\nconst r = Math.round;\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: r}) x!: number;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[158, 159]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: scope-shadow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive } from '@angular/core';\nexport function toBool(v: unknown): boolean { return !!v; }\nfunction make(name: string, toBool: any) { return [{ name, transform: toBool }]; }\n@Directive({ selector: '[d]', inputs: make('x', (v: string) => v.length) })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[173, 179]]
+    },
+    {
+      "name": "probe: scope-paramMember",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive } from '@angular/core';\nexport function toBool(v: unknown): boolean { return !!v; }\nconst T = { toBool };\nfunction make(name: string, transform: any) { return [{ name, transform }]; }\n@Directive({ selector: '[d]', inputs: make('x', T.toBool) })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",toBool]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_x": "staticngAcceptInputType_x:unknown;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: scope-memberOpts",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input, booleanAttribute } from '@angular/core';\nfunction opts(t: any) { return { transform: t }; }\n@Directive({ selector: '[d]' })\nexport class D { @Input(opts(booleanAttribute)) x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",booleanAttribute]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_x": "staticngAcceptInputType_x:unknown;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: scope-genericHelper",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive } from '@angular/core';\nfunction make<T>(n: string) { return [{ name: n, transform: (v: T) => v }]; }\n@Directive({ selector: '[d]', inputs: make<string>('x') })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[107, 108]]
+    },
+    {
+      "name": "probe: scope-objParamFn",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive } from '@angular/core';\nexport function toBool(v: unknown): boolean { return !!v; }\nfunction make(o: any) { return [{ name: 'x', transform: o.t }]; }\n@Directive({ selector: '[d]', inputs: make({ t: toBool }) })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",toBool]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_x": "staticngAcceptInputType_x:unknown;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: scope-paramArrowNamed",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive } from '@angular/core';\nfunction make(name: string, t: any) { return [{ name, transform: t }]; }\n@Directive({ selector: '[d]', inputs: make('x', (v: string) => v.length) })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[108, 109]]
+    },
+    {
+      "name": "probe: scope-memberOptsArrow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nfunction opts(transform: any) { return { transform }; }\n@Directive({ selector: '[d]' })\nexport class D { @Input(opts((v: string) => v.length)) x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: scope-this",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, booleanAttribute } from '@angular/core';\nclass H { static make() { return [{ name: 'x', transform: this.t }]; } }\n@Directive({ selector: '[d]', inputs: H.make() })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[119, 125]]
+    },
+    {
+      "name": "probe: scope-arguments",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, booleanAttribute } from '@angular/core';\nfunction make() { return [{ name: 'x', transform: arguments[0] }]; }\n@Directive({ selector: '[d]', inputs: make(booleanAttribute) })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[111, 123]]
+    },
+    {
+      "name": "probe: scope-defaultArrow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive } from '@angular/core';\nfunction make(n: string, transform: any = (v: string) => v.length) { return [{ name: n, transform }]; }\n@Directive({ selector: '[d]', inputs: make('x') })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-constArrow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v: string) => v.length;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-constArrowNamedSame",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v: string) => v.length;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform: transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[156, 165]]
+    },
+    {
+      "name": "probe: shorthand-constArrowNamedOther",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst t = (v: string) => v.length;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform: t }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[148, 149]]
+    },
+    {
+      "name": "probe: shorthand-constFunctionExpression",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = function (v: string) { return v.length; };\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",function(v){returnv.length;}]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-letArrow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nlet transform = (v: string) => v.length;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-constArrowTyped",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform: (v: string) => number = (v: string) => v.length;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-constArrowParenthesized",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = ((v: string) => v.length);\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[68, 93]]
+    },
+    {
+      "name": "probe: shorthand-constArrowAs",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = ((v: string) => v.length) as any;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[68, 100]]
+    },
+    {
+      "name": "probe: shorthand-constChain",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst a = (v: string) => v.length;\nconst transform = a;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[103, 104]]
+    },
+    {
+      "name": "probe: shorthand-inConstObject",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v: string) => v.length;\nconst X = { name: 'x', transform };\n@Directive({ selector: '[d]', inputs: [X] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-constArrowUntyped",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v) => v;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform function first parameter must have a type Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[68, 76]]
+    },
+    {
+      "name": "probe: shorthand-constArrowGeneric",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = <T>(v: T) => v;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform function cannot be generic Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[68, 82]]
+    },
+    {
+      "name": "probe: shorthand-objectDestructured",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst { transform } = { transform: (v: string) => v.length };\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-exportedConstArrow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nexport const transform = (v: string) => v.length;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-varRedeclared",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nvar transform = (v: string) => v.length;\nvar transform = (v: string) => v.length;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-spreadConstObject",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v: string) => v.length;\nconst B = { transform };\n@Directive({ selector: '[d]', inputs: [{ name: 'x', ...B }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-constArrowUnexportedType",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\ninterface Foo { a: string }\nconst transform = (v: Foo) => 1;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[100, 103]]
+    },
+    {
+      "name": "probe: shorthand-constArrowClash",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v: string) => v.length;\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; static ngAcceptInputType_x: string; }\n"
+      },
+      "diagnostics": [
+        "Class cannot have both a transform function on Input x and a static member called ngAcceptInputType_x"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[68, 91]]
+    },
+    {
+      "name": "probe: shorthand-arrayDestructured",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst [transform] = [(v: string) => v.length];\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-objectDestructuredNamed",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst t = (v: string) => v.length;\nconst { transform } = { transform: t };\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[120, 121]]
+    },
+    {
+      "name": "probe: shorthand-nestedDestructured",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst { o: { transform } } = { o: { transform: (v: string) => v.length } };\n@Directive({ selector: '[d]', inputs: [{ name: 'x', transform }] })\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-memberConstArrow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v: string) => v.length;\n@Directive({ selector: '[d]' })\nexport class D { @Input({ transform }) x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: shorthand-memberConstArrowNamedSame",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v: string) => v.length;\n@Directive({ selector: '[d]' })\nexport class D { @Input({ transform: transform }) x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[162, 171]]
+    },
+    {
+      "name": "probe: shorthand-memberConstArrowNamedOther",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst t = (v: string) => v.length;\n@Directive({ selector: '[d]' })\nexport class D { @Input({ transform: t }) x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[154, 155]]
+    },
+    {
+      "name": "probe: shorthand-memberOptionsConst",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import { Directive, Input } from '@angular/core';\nconst transform = (v: string) => v.length;\nconst OPTS = { transform };\n@Directive({ selector: '[d]' })\nexport class D { @Input(OPTS) x: any; }\n"
+      },
+      "diagnostics": [],
+      "classes": {
+        "D": {
+          "inputs": "{x:[2,\"x\",\"x\",(v)=>v.length]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<D,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": [],
+      "diagnosticSpans": []
+    },
+    {
+      "name": "probe: scope-spreadConstFunction",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, booleanAttribute} from '@angular/core';\nexport function toBool(v: string) { return !!v; }\nfunction make(name: string, t: any) { return [{name, transform: t}]; }\nconst args = ['x', (v: string) => v.trim()] as const;\n@Directive({selector: '[d]', inputs: make(...args)})\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[173, 174]]
+    },
+    {
+      "name": "probe: scope-spreadFunction",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, booleanAttribute} from '@angular/core';\nfunction make(name: string, t: any) { return [{name, transform: t}]; }\n@Directive({selector: '[d]', inputs: make('x', ...[(v: string) => v.trim()])})\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[123, 124]]
+    },
+    {
+      "name": "probe: scope-restFunction",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, booleanAttribute} from '@angular/core';\nfunction make(...a: any[]) { return [{name: a[0], transform: a[1]}]; }\n@Directive({selector: '[d]', inputs: make('x', (v: string) => v.trim())})\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[120, 124]]
+    },
+    {
+      "name": "probe: scope-restAfterParamFunction",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, booleanAttribute} from '@angular/core';\nfunction make(name: string, ...ts: any[]) { return [{name, transform: ts[0]}]; }\n@Directive({selector: '[d]', inputs: make('x', (v: string) => v.trim())})\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[129, 134]]
+    },
+    {
+      "name": "probe: scope-spreadRestThroughFunction",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, booleanAttribute} from '@angular/core';\nfunction make(name: string, t: any) { return [{name, transform: t}]; }\nfunction outer(...a: any[]) { return make(...a); }\n@Directive({selector: '[d]', inputs: outer('x', (v: string) => v.trim())})\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[123, 124]]
+    },
+    {
+      "name": "probe: scope-functionAfterSpread",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, booleanAttribute} from '@angular/core';\nfunction make(name: string, t: any) { return [{name, transform: t}]; }\nconst pre = ['x'];\n@Directive({selector: '[d]', inputs: make(...pre, (v: string) => v.trim())})\nexport class D { x: any; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "diagnosticSpans": [[123, 124]]
+    },
+    {
+      "name": "probe: transform-global-atob",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: atob}) x: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",atob]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-btoa",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: btoa}) x: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",btoa]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-alert",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: alert}) x: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",alert]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-globalThis",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: globalThis}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 128]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-undefined",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: undefined}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'undefined'."],
+      "diagnosticSpans": [[106, 128]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-inputsAtob",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]', inputs: [{name: 'x', transform: atob}]})\nexport class Dir {\n  x: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",atob]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-projectFunction",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: ambientFn}) x: any;\n}\n",
+        "globals.d.ts": "declare function ambientFn(v: string): number;\ndeclare var ambientVar: string;\ndeclare function ambientOverload(v: string): number;\ndeclare function ambientOverload(v: number): number;\ndeclare function ambientGeneric<T>(v: T): T;\ndeclare namespace AmbNs { function f(v: string): number; }\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",ambientFn]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-projectNamespaceMember",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: AmbNs.f}) x: any;\n}\n",
+        "globals.d.ts": "declare function ambientFn(v: string): number;\ndeclare var ambientVar: string;\ndeclare function ambientOverload(v: string): number;\ndeclare function ambientOverload(v: number): number;\ndeclare function ambientGeneric<T>(v: T): T;\ndeclare namespace AmbNs { function f(v: string): number; }\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 125]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-declareGlobalFunction",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\ndeclare global { function gg(v: string): number; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: gg}) x: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:[2,\"x\",\"x\",gg]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-aliasWindow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({alias: window as any}) x: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:\"x\"}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-aliasUndeclared",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({alias: undeclaredName}) x: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{x:\"x\"}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"x\":{\"alias\":\"x\";\"required\":false;};},{},never,never,true,never>;"
+        }
+      },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-Intl",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: Intl}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'Intl'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in TypeScript's lib.es5.d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-global-Reflect",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: Reflect}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'Reflect'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in TypeScript's lib.es2015.reflect.d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-global-clashAtob",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  static ngAcceptInputType_x: string;\n  @Input({transform: atob}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Class cannot have both a transform function on Input x and a static member called ngAcceptInputType_x"
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "ngtsc reports this at the transform's declaration in TypeScript's lib.dom.d.ts, a file oxc doesn't read (so this snapshot's generator, which keeps test.ts diagnostics, records none); oxc reports the same message on the expression"
+    },
+    {
+      "name": "probe: transform-global-window",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: window}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'window'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-document",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: document}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'document'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-navigator",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: navigator}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'navigator'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-localStorage",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: localStorage}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'localStorage'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-console",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: console}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'console'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-self",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: self}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'self'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-CSS",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: CSS}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'CSS'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-WebAssembly",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: WebAssembly}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'WebAssembly'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-structuredClone",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: structuredClone}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform function cannot be generic Value is a reference to 'structuredClone'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-queueMicrotask",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: queueMicrotask}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Unable to import type VoidFunction. The symbol is not exported from /Users/brooklyn/workspace/github/oxc-angular-compiler/node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/lib/lib.dom.d.ts."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-setTimeout",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: setTimeout}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Unable to import type TimerHandler. The symbol is not exported from /Users/brooklyn/workspace/github/oxc-angular-compiler/node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/lib/lib.dom.d.ts."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-fetch",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: fetch}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Unable to import type RequestInfo. The symbol is not exported from /Users/brooklyn/workspace/github/oxc-angular-compiler/node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/lib/lib.dom.d.ts."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-projectVar",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: ambientVar}) x: any;\n}\n",
+        "globals.d.ts": "declare function ambientFn(v: string): number;\ndeclare var ambientVar: string;\ndeclare function ambientOverload(v: string): number;\ndeclare function ambientOverload(v: number): number;\ndeclare function ambientGeneric<T>(v: T): T;\ndeclare namespace AmbNs { function f(v: string): number; }\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'ambientVar'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (a project `.d.ts`), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-projectOverload",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: ambientOverload}) x: any;\n}\n",
+        "globals.d.ts": "declare function ambientFn(v: string): number;\ndeclare var ambientVar: string;\ndeclare function ambientOverload(v: string): number;\ndeclare function ambientOverload(v: number): number;\ndeclare function ambientGeneric<T>(v: T): T;\ndeclare namespace AmbNs { function f(v: string): number; }\n"
+      },
+      "diagnostics": [
+        "Input transform function cannot have multiple signatures Value is a reference to 'ambientOverload'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (a project `.d.ts`), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-projectGeneric",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: ambientGeneric}) x: any;\n}\n",
+        "globals.d.ts": "declare function ambientFn(v: string): number;\ndeclare var ambientVar: string;\ndeclare function ambientOverload(v: string): number;\ndeclare function ambientOverload(v: number): number;\ndeclare function ambientGeneric<T>(v: T): T;\ndeclare namespace AmbNs { function f(v: string): number; }\n"
+      },
+      "diagnostics": [
+        "Input transform function cannot be generic Value is a reference to 'ambientGeneric'."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (a project `.d.ts`), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-inputsWindow",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]', inputs: [{name: 'x', transform: window}]})\nexport class Dir {\n  x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'window'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (TypeScript's DOM lib), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-declareGlobalVar",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\ndeclare global { var gv: string; }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: gv}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is of type 'undefined'."],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a global declared outside this file (this file's `declare global`, whose names oxc doesn't track), which oxc doesn't read: oxc assumes it's a function and accepts it, as it does an imported transform (only the `ngAcceptInputType_` clash is checked), where ngtsc reads the declaration and reports this"
+    },
+    {
+      "name": "probe: transform-global-namespaceMember",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\nnamespace U { export function f(v: string) { return 1; } }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: U.f}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[177, 180]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-declareModule",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\ndeclare module M { }\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: M}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[139, 140]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-undeclared",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: undeclaredName}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a name declared nowhere, which TypeScript reports: oxc can't tell it from a global declared outside the file, so it assumes it's a function and accepts it, where ngtsc reports this"
+    },
+    {
+      "name": "probe: transform-global-inputsUndeclared",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]', inputs: [{name: 'x', transform: undeclaredName}]})\nexport class Dir {\n  x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "classes": {},
+      "dtsImports": [],
+      "skip": "a name declared nowhere, which TypeScript reports: oxc can't tell it from a global declared outside the file, so it assumes it's a function and accepts it, where ngtsc reports this"
+    },
+    {
+      "name": "probe: transform-global-member-window_atob",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: window.atob}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 129]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-member-document_createElement",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: document.createElement}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 140]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-member-globalThis_atob",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: globalThis.atob}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 133]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-member-self_atob",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: self.atob}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 127]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-member-console_log",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: console.log}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 129]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-member-undeclaredName_foo",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: undeclaredName.foo}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 136]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: transform-global-member-localStorage_getItem",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input} from '@angular/core';\n@Directive({selector: '[d]'})\nexport class Dir {\n  @Input({transform: localStorage.getItem}) x: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[118, 138]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
       "name": "probe: shortCircuit-metaOr",
       "origin": "probe",
       "files": {
@@ -5750,6 +8687,310 @@
           "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"a\":{\"alias\":\"a\";\"required\":false;};},{},never,never,true,never>;"
         }
       },
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-ns-fn-transform-plain",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export function fn(v: string) { return 1; } }\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: NS.fn}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[195, 200]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-ns-fn-transform-member",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export function fn(v: string) { return 1; } }\n@Directive({selector: '[d]', })\nexport class Dir {\n  @Input({transform: NS.fn}) a: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform must be a function Value could not be determined statically."
+      ],
+      "diagnosticSpans": [[206, 211]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-ns-generic-fn-typeof",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export function fn<T>(v: T) { return 1; } }\ndeclare const T: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: T}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": ["Input transform function cannot be generic Value is a reference to 'fn'."],
+      "diagnosticSpans": [[88, 129]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-ns-untyped-fn-typeof",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export function fn(v) { return 1; } }\ndeclare const T: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: T}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [
+        "Input transform function first parameter must have a type Value is a reference to 'fn'."
+      ],
+      "diagnosticSpans": [[88, 123]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-nsval-member-transform",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace U { export function f(v: string) { return 1; } }\n@Directive({selector: '[d]', })\nexport class Dir {\n  @Input({transform: U}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'U'."],
+      "diagnosticSpans": [[73, 131]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-nsval-meta-transform",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace U { export function f(v: string) { return 1; } }\n@Directive({selector: '[d]', inputs: [{name: 'x', transform: U}]})\nexport class Dir {\n  x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'U'."],
+      "diagnosticSpans": [[73, 131]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-nsval-typeof-transform",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace U { export function f(v: string) { return 1; } }\ndeclare const X: typeof U;\n@Directive({selector: '[d]', inputs: [{name: 'x', transform: X}]})\nexport class Dir {\n  x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'U'."],
+      "diagnosticSpans": [[73, 131]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-nsval-exported-transform",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nexport namespace U { export function f(v: string) { return 1; } }\n@Directive({selector: '[d]', })\nexport class Dir {\n  @Input({transform: U}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'U'."],
+      "diagnosticSpans": [[73, 138]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-nsval-merged-transform",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace U { export type T = string; }\nnamespace U { export const a = 1; }\n@Directive({selector: '[d]', })\nexport class Dir {\n  @Input({transform: U}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'U'."],
+      "diagnosticSpans": [[113, 148]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-overload",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export function fn(v: string): number; export function fn(v: any) { return 1; } }\ndeclare const T: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: T}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{a:[2,\"a\",\"a\",fn]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"a\":{\"alias\":\"a\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_a": "staticngAcceptInputType_a:string;"
+        }
+      },
+      "dtsImports": [],
+      "skip": "ngtsc emits `fn` for `transform: T` with `declare const T: typeof NS.fn` (a function declared in a namespace), an identifier that isn't in scope, so its output throws a ReferenceError when the module loads; oxc keeps `T`"
+    },
+    {
+      "name": "probe: r6-t494-static",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export class C { static t(v: string) { return 1; } } }\ndeclare const X: typeof NS.C;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: X.t}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{a:[2,\"a\",\"a\",t]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"a\":{\"alias\":\"a\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_a": "staticngAcceptInputType_a:string;"
+        }
+      },
+      "dtsImports": [],
+      "skip": "ngtsc emits `t` for `transform: X.t` (a static method of a class declared in a namespace), an identifier that isn't in scope, so its output throws a ReferenceError when the module loads; oxc keeps `X.t`"
+    },
+    {
+      "name": "probe: r6-t494-static-generic",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export class C { static t<T>(v: T) { return 1; } } }\ndeclare const X: typeof NS.C;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: X.t}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": ["Input transform function cannot be generic Value is a reference to 't'."],
+      "diagnosticSpans": [[105, 136]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-local-type",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { type T = string; export function fn(v: T) { return 1; } }\ndeclare const F: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: F}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[127, 128]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-exported-type",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export type T = string; export function fn(v: T) { return 1; } }\ndeclare const F: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: F}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{a:[2,\"a\",\"a\",fn]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"a\":{\"alias\":\"a\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_a": "staticngAcceptInputType_a:T;"
+        }
+      },
+      "dtsImports": [],
+      "skip": "ngtsc emits `fn` for `transform: T` with `declare const T: typeof NS.fn` (a function declared in a namespace), an identifier that isn't in scope, so its output throws a ReferenceError when the module loads; oxc keeps `T`"
+    },
+    {
+      "name": "probe: r6-t494-namespace-member-clash",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace U { export function f(v: string) { return 1; } }\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: U}]})\nexport class Dir {\n  a: any;\n  static ngAcceptInputType_a: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'U'."],
+      "diagnosticSpans": [[73, 131]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-alias-generic",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace U { export function f<T>(v: T) { return 1; } }\nimport f = U.f;\n@Directive({selector: '[d]', })\nexport class Dir {\n  @Input({transform: f}) x: any;\n}\n"
+      },
+      "diagnostics": ["Input transform function cannot be generic Value is a reference to 'f'."],
+      "diagnosticSpans": [[87, 127]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-nested-namespace-transform",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace U { export namespace V { export const a = 1; } }\ndeclare const X: typeof U.V;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: X}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": ["Input transform must be a function Value is a reference to 'V'."],
+      "diagnosticSpans": [[87, 129]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-ambient-type",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\ndeclare namespace NS { type T = string; function fn(v: T): number; }\ndeclare const F: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: F}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[128, 129]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-ambient-export-type",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\ndeclare namespace NS { export type T = string; function fn(v: T): number; }\ndeclare const F: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: F}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{a:[2,\"a\",\"a\",fn]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"a\":{\"alias\":\"a\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_a": "staticngAcceptInputType_a:T;"
+        }
+      },
+      "dtsImports": [],
+      "skip": "ngtsc emits `fn` for `transform: T` with `declare const T: typeof NS.fn` (a function declared in a namespace), an identifier that isn't in scope, so its output throws a ReferenceError when the module loads; oxc keeps `T`"
+    },
+    {
+      "name": "probe: r6-t494-merged-type",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { export type T = string; }\nnamespace NS { export function fn(v: T) { return 1; } }\ndeclare const F: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: F}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [],
+      "diagnosticSpans": [],
+      "classes": {
+        "Dir": {
+          "inputs": "{a:[2,\"a\",\"a\",fn]}",
+          "dts:ɵdir": "staticɵdir:i0.ɵɵDirectiveDeclaration<Dir,\"[d]\",never,{\"a\":{\"alias\":\"a\";\"required\":false;};},{},never,never,true,never>;",
+          "dts:ngAcceptInputType_a": "staticngAcceptInputType_a:T;"
+        }
+      },
+      "dtsImports": [],
+      "skip": "ngtsc emits `fn` for `transform: T` with `declare const T: typeof NS.fn` (a function declared in a namespace), an identifier that isn't in scope, so its output throws a ReferenceError when the module loads; oxc keeps `T`"
+    },
+    {
+      "name": "probe: r6-t494-outer-type",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\ntype T = string;\nnamespace NS { export function fn(v: T) { return 1; } }\ndeclare const F: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: F}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[127, 128]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-local-class-type",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { class K {} export function fn(v: K) { return 1; } }\ndeclare const F: typeof NS.fn;\n@Directive({selector: '[d]', inputs: [{name: 'a', transform: F}]})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[121, 122]],
+      "classes": {},
+      "dtsImports": []
+    },
+    {
+      "name": "probe: r6-t494-arrow-local-type",
+      "origin": "probe",
+      "files": {
+        "test.ts": "import {Directive, Input, ContentChild, ViewChild} from '@angular/core';\nnamespace NS { interface I { a: 1 } export const INPUTS = [{name: 'a', transform: (v: I) => 1}]; }\ndeclare const X: typeof NS.INPUTS;\n@Directive({selector: '[d]', inputs: X})\nexport class Dir {\n  a: any;\n  b: any;\n}\n"
+      },
+      "diagnostics": [
+        "Symbol must be exported in order to be used as the type of an Input transform function"
+      ],
+      "diagnosticSpans": [[159, 160]],
+      "classes": {},
       "dtsImports": []
     }
   ]

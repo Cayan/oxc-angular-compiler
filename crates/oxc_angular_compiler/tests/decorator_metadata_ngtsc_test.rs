@@ -19,7 +19,7 @@
 //! merged safely into bundled declaration files; `i0` (`@angular/core`) is
 //! always imported, so those types are kept.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use oxc_allocator::Allocator;
 use oxc_angular_compiler::{TransformOptions, TransformResult, transform_angular_file};
@@ -299,7 +299,7 @@ fn decorator_metadata_matches_ngtsc() {
         failures.len(),
         failures.join("\n\n")
     );
-    assert_eq!(compared, 380, "fixtures compared");
+    assert_eq!(compared, 575, "fixtures compared");
 }
 
 fn transform(source: &str) -> TransformResult {
@@ -377,50 +377,121 @@ export class Dir {}
     assert!(strip(&result.code).contains(r#"inputs:{x:[2,"x","x",fn]}"#), "{}", result.code);
 }
 
+/// The same for an `@Input(...)` argument: ngtsc 22.1.7 reads these from
+/// `./shared` (with `export const OPTS = {alias: 'y'}`, it compiles the input
+/// as `y`). oxc can't, so it reports them instead of compiling the input
+/// without its alias, `required` flag or transform.
+#[test]
+fn input_decorator_options_imported_from_another_module_are_reported() {
+    let cases = [
+        ("@Input(OPTS) x: any;", "OPTS", "OPTS"),
+        ("@Input((OPTS)) x: any;", "OPTS", "(OPTS)"),
+        ("@Input(NAME) x: any;", "NAME", "NAME"),
+        ("@Input(ns.OPTS) x: any;", "OPTS", "ns.OPTS"),
+        ("@Input({...OPTS}) x: any;", "OPTS", "{...OPTS}"),
+        ("@Input({alias: 'z', ...OPTS}) x: any;", "OPTS", "{alias: 'z', ...OPTS}"),
+        ("@Input(LOCAL) x: any;", "OPTS", "LOCAL"),
+        ("@Input({alias: NAME}) x: any;", "NAME", "{alias: NAME}"),
+        ("@Input({required: REQ}) x: any;", "REQ", "{required: REQ}"),
+        ("@Input(OPTS) set x(v: any) {}", "OPTS", "OPTS"),
+    ];
+    for (member, name, span) in cases {
+        let source = format!(
+            "import {{Directive, Input}} from '@angular/core';
+import {{OPTS, NAME, REQ}} from './shared';
+import * as ns from './shared';
+const LOCAL = OPTS;
+@Directive({{selector: '[d]'}})
+export class Dir {{
+  {member}
+}}
+"
+        );
+        let message = format!(
+            "@Input depends on '{name}', which is imported from another module. \
+             OXC compiles one file at a time and cannot evaluate values from other files."
+        );
+        assert_eq!(
+            errors(&transform(&source), &source),
+            vec![(message, span.to_string())],
+            "{member}"
+        );
+    }
+
+    // An imported transform is a reference: nothing to evaluate.
+    let source = "import {Directive, Input} from '@angular/core';
+import {fn} from './shared';
+@Directive({selector: '[d]'})
+export class Dir {
+  @Input({alias: 'y', transform: fn}) x: any;
+}
+";
+    let result = transform(source);
+    assert!(errors(&result, source).is_empty(), "{:?}", errors(&result, source));
+    assert!(strip(&result.code).contains(r#"inputs:{x:[2,"y","x",fn]}"#), "{}", result.code);
+}
+
 /// A transform returned by a function the metadata calls is emitted where the
 /// directive is compiled, outside that function. A parameter becomes the
 /// argument it was passed (the snapshot's `scope-*` probes); anything else that
-/// uses the function's parameters, `this` or `arguments` would mean something
-/// else there, or nothing. ngtsc 22.1.7 emits `(v) => v + name` as written
-/// (`name` is then `window.name`) and `booleanAttribute` for `o.t` (the name
-/// the argument was first given); oxc reports these instead.
+/// uses the function's parameters would mean something else there, or nothing.
+/// ngtsc 22.1.7 emits `(v) => v + name` as written (`name` is then
+/// `window.name`) and `booleanAttribute` for `o.t` (the name the argument was
+/// first given); oxc reports these instead. (`this` and `arguments` there
+/// aren't analyzable, so ngtsc rejects those itself: `scope-this`,
+/// `scope-arguments`.)
 #[test]
 fn transforms_using_the_parameters_of_a_called_function_are_reported() {
     let cases = [
         (
             "function make(name: string) { return [{ name, transform: (v: string) => v + name }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(o: any) { return [{ name: 'x', transform: o.t }]; }",
+            "inputs: make({ t: booleanAttribute })",
+            "@Directive.inputs",
             "make({ t: booleanAttribute })",
         ),
-        ("class H { static make() { return [{ name: 'x', transform: this.t }]; } }", "H.make()"),
         (
-            "function make() { return [{ name: 'x', transform: arguments[0] }]; }",
-            "make(booleanAttribute)",
+            "function opts(n: string) { return { transform: (v: string) => v + n }; }",
+            "",
+            "@Input",
+            "opts('a')",
         ),
         // Scoped like JavaScript: only a nested non-arrow function has its own
         // `arguments`, and a name declared in a block isn't in scope after it
         // (the snapshot's `scope-shadowed*` probes are the names that are).
         (
             "function make(name: string) { return [{ name, transform: (v: string) => arguments.length }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(name: string) { return [{ name, transform: (v: string) => { { const name = v; } return name; } }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(name: string) { return [{ name, transform: (v: string) => ({ [name]: v }) }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(name: string) { return [{ name, transform: (v: string) => { switch (name) { case 'x': let name = v; return name; } return v; } }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(name: string) { return [{ name, transform: function (v: string) { return (() => name)(); } }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         // Types are erased (the snapshot's `scope-typeOnly-*` probes), but the
@@ -428,46 +499,57 @@ fn transforms_using_the_parameters_of_a_called_function_are_reported() {
         // `satisfies` and `<T>x`, a parameter's default and a call's arguments.
         (
             "function make(name: string) { return [{ name: 'x', transform: (v: string) => name! }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(name: string) { return [{ name: 'x', transform: (v: string) => name as typeof name }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(name: string) { return [{ name: 'x', transform: (v: string) => name satisfies string }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(name: string) { return [{ name: 'x', transform: (v: string) => <typeof name>name }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function make(name: string) { return [{ name: 'x', transform: (v: string, d: typeof name = name) => v }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
         (
             "function id<T>(v: T) { return v; }
 function make(name: string) { return [{ name: 'x', transform: (v: string) => id<typeof name>(name) }]; }",
+            "inputs: make('x')",
+            "@Directive.inputs",
             "make('x')",
         ),
     ];
-    for (helper, inputs) in cases {
+    for (helper, meta, subject, span) in cases {
+        let member = if meta.is_empty() { "@Input(opts('a')) x: any;" } else { "x: any;" };
         let source = format!(
-            "import {{Directive, booleanAttribute}} from '@angular/core';
+            "import {{Directive, Input, booleanAttribute}} from '@angular/core';
 {helper}
-@Directive({{selector: '[d]', inputs: {inputs}}})
-export class Dir {{ x: any; }}
+@Directive({{selector: '[d]', {meta}}})
+export class Dir {{ {member} }}
 "
         );
         let result = transform(&source);
-        let message = "@Directive.inputs: the transform of \"x\" uses a parameter of the \
-                       function it's written in. OXC can't emit it outside that function.";
-        assert_eq!(
-            errors(&result, &source),
-            vec![(message.to_string(), inputs.to_string())],
-            "{helper}"
+        let message = format!(
+            "{subject}: the transform of \"x\" uses a parameter of the function it's \
+             written in. OXC can't emit it outside that function."
         );
+        assert_eq!(errors(&result, &source), vec![(message, span.to_string())], "{helper}");
     }
 }
 
@@ -677,4 +759,205 @@ fn evaluation_is_bounded() {
             None => assert!(messages.len() <= 1, "{messages:?}"),
         }
     }
+}
+
+/// ngtsc emits the method's bare name for `transform: Utils.coerce` (a static
+/// method), which here would silently bind the unrelated top-level `coerce`.
+/// oxc keeps the expression as written.
+#[test]
+fn static_method_transform_is_not_confused_with_a_same_named_function() {
+    let source = "import {Directive, Input} from '@angular/core';
+export function coerce(v: string) { return 1; }
+class Utils { static coerce(v: boolean) { return 2; } }
+@Directive({selector: '[d]'})
+export class Dir { @Input({transform: Utils.coerce}) x: any; }";
+    let code = strip(&transform(source).code);
+    assert!(code.contains(r#"inputs:{x:[2,"x","x",Utils.coerce]}"#), "{code}");
+}
+
+/// A transform read through a namespace import (`core.booleanAttribute`):
+/// ngtsc 22.1.7 reports that it can't reference it, at the declaration in
+/// @angular/core's `.d.ts`, which the snapshot can't record (see
+/// `probe: eval-nsImportMember`). oxc reports it on the expression.
+#[test]
+fn namespace_imported_transform_cannot_be_referenced() {
+    let source = "import {Directive, Input} from '@angular/core';
+import * as core from '@angular/core';
+@Directive({selector: '[d]'})
+export class Dir { @Input({transform: core.booleanAttribute}) v: any; }
+";
+    let message = "Input transform function could not be referenced \
+                   Value is a reference to 'booleanAttribute'.";
+    assert_eq!(
+        errors(&transform(source), source),
+        vec![(message.to_string(), "core.booleanAttribute".to_string())]
+    );
+}
+
+/// A transform declared in another file (an import, a namespace member or a
+/// global from TypeScript's lib, like `Intl` or the DOM's `atob`): ngtsc
+/// 22.1.7 reports these at that declaration, which the snapshot can't record
+/// (the fixtures below are skipped for that reason, with the diagnostics ngtsc
+/// reported). oxc reports the same message on the expression.
+#[test]
+fn transform_declared_in_another_file_is_reported_on_the_expression() {
+    let fixtures: Value = serde_json::from_str(FIXTURES).unwrap();
+    let cases = [
+        ("probe: transform-clashImported", "booleanAttribute"),
+        ("probe: transform-clashImportedMeta", "booleanAttribute"),
+        ("probe: transform-clashGlobal", "parseInt"),
+        ("probe: transform-globalNumber", "Number"),
+        ("probe: transform-globalNumberClash", "Number"),
+        ("probe: transform-globalString", "String"),
+        ("probe: transform-nsClash", "u.toNum"),
+        ("probe: transform-global-Intl", "Intl"),
+        ("probe: transform-global-Reflect", "Reflect"),
+        ("probe: transform-global-clashAtob", "atob"),
+    ];
+    for (name, expression) in cases {
+        let fixture = fixtures["fixtures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["name"] == name)
+            .unwrap_or_else(|| panic!("{name}"));
+        let source = fixture["files"]["test.ts"].as_str().unwrap();
+        let expected: Vec<(String, String)> = fixture["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| (d.as_str().unwrap().to_string(), expression.to_string()))
+            .collect();
+        assert_eq!(errors(&transform(source), source), expected, "{name}");
+    }
+}
+
+/// A name the file declares as a namespace or an `import x = ...` alias isn't
+/// a global declared elsewhere, so it isn't assumed to be a function the way
+/// `atob` is: it's resolved like ngtsc 22.1.7 does. `transform: U` is a
+/// reference to the namespace (at its declaration), and `transform: f` is the
+/// function the alias names, emitted by the alias's name. The snapshot's
+/// `r6-nsval-*` and `r6-alias-*` probes cover more forms.
+#[test]
+fn file_namespaces_and_aliases_are_not_assumed_to_be_global_functions() {
+    let namespace = "namespace U { export function f(v: string) { return 1; } }";
+    let source = |pre: &str, expr: &str| {
+        format!(
+            "import {{Directive, Input}} from '@angular/core';\n{pre}\n\
+             @Directive({{selector: '[d]'}})\n\
+             export class Dir {{\n  @Input({{transform: {expr}}}) x: any;\n}}\n"
+        )
+    };
+
+    let with_namespace = source(namespace, "U");
+    assert_eq!(
+        errors(&transform(&with_namespace), &with_namespace),
+        vec![(
+            "Input transform must be a function Value is a reference to 'U'.".to_string(),
+            namespace.to_string()
+        )]
+    );
+
+    let with_alias = source(&format!("{namespace}\nimport f = U.f;"), "f");
+    let result = transform(&with_alias);
+    assert_eq!(errors(&result, &with_alias), vec![]);
+    assert!(strip(&result.code).contains(r#"inputs:{x:[2,"x","x",f]}"#), "{}", result.code);
+}
+
+/// A shorthand `{ transform }` naming a global is looked up through
+/// TypeScript's shorthand symbol, which ngtsc 22.1.7 never accepts as a
+/// transform: "could not be determined statically" when nothing declares
+/// it, and an error about the declaration when a lib or `.d.ts` does (at
+/// that declaration). So unlike `transform: atob`, it isn't assumed to be a
+/// function.
+#[test]
+fn shorthand_transform_naming_a_global_is_rejected() {
+    let source = "import {Directive} from '@angular/core';
+@Directive({selector: '[d]', inputs: [{name: 'x', transform}]})
+export class Dir {
+  x!: any;
+}
+";
+    assert_eq!(
+        errors(&transform(source), source),
+        vec![(
+            "Input transform must be a function Value could not be determined statically."
+                .to_string(),
+            "transform".to_string()
+        )]
+    );
+}
+
+/// ngtsc checks an overloaded static method's first declaration, not its
+/// implementation (checked with @angular/compiler-cli 22.1.7, which compiles
+/// this; the snapshot can't hold it because ngtsc emits the method's bare name,
+/// see `static_method_transform_is_not_confused_with_a_same_named_function`).
+#[test]
+fn overloaded_static_method_transform_is_checked_at_its_first_declaration() {
+    let source = "import {Directive, Input} from '@angular/core';
+interface Foo {}
+class U { static c(v: string): number; static c(v: string | Foo) { return 1; } }
+@Directive({selector: '[d]'})
+export class Dir { @Input({transform: U.c}) x!: number; }
+";
+    let result = transform(source);
+    assert_eq!(errors(&result, source), vec![]);
+    let code = strip(&result.code);
+    assert!(code.contains(r#"inputs:{x:[2,"x","x",U.c]}"#), "{code}");
+}
+
+/// Member decorators through a namespace import are Angular's only when the
+/// namespace imports `@angular/core` (ngtsc 22.1.7 compiles the query, host
+/// binding and listener below for `core`, and none of them for `foreign`).
+/// The snapshot compares the inputs and outputs of both
+/// (`probe: transform-coreNamespaceMembers` and
+/// `probe: transform-foreignNamespaceMembers`).
+#[test]
+fn namespaced_member_decorators_need_an_angular_core_namespace() {
+    let members = "
+export class Cmp {
+  @NS.ViewChild('ref') ref: any;
+  @NS.HostBinding('class.a') a = true;
+  @NS.HostListener('click') onClick() {}
+}
+";
+    let core = "import * as NS from '@angular/core';
+@NS.Component({selector: 'c', template: '<div #ref></div>'})";
+    let foreign = "import {Component} from '@angular/core';
+import * as NS from 'foreign-decorators';
+@Component({selector: 'c', template: '<div #ref></div>'})";
+    for (header, compiled) in [(core, true), (foreign, false)] {
+        let code = transform(&format!("{header}{members}")).code;
+        for part in ["viewQuery", "ɵɵclassProp(\"a\"", "ɵɵlistener(\"click\""] {
+            assert_eq!(code.contains(part), compiled, "{part} in\n{code}");
+        }
+    }
+}
+
+/// `resolved_imports` points an imported name at the file that declares it
+/// (past a barrel). It doesn't change which module the import is from, so
+/// `@core.Input()` through `import * as core from '@angular/core'` is still
+/// Angular's when `core` is mapped.
+#[test]
+fn namespaced_member_decorators_ignore_resolved_import_paths() {
+    let source = "import {Component} from '@angular/core';
+import * as core from '@angular/core';
+@Component({selector: 'c', template: ''})
+export class Cmp {
+  @core.Input() x: any;
+  @core.Output() y: any;
+}
+";
+    let options = TransformOptions {
+        resolved_imports: Some(HashMap::from([(
+            "core".to_string(),
+            "../node_modules/@angular/core/fesm2022/core.mjs".to_string(),
+        )])),
+        ..TransformOptions::default()
+    };
+    let allocator = Allocator::default();
+    let result = transform_angular_file(&allocator, "test.ts", source, Some(&options), None);
+    let code = strip(&result.code);
+    assert!(code.contains(r#"inputs:{x:"x"}"#), "{}", result.code);
+    assert!(code.contains(r#"outputs:{y:"y"}"#), "{}", result.code);
 }
