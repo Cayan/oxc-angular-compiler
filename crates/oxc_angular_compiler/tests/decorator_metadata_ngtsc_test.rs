@@ -275,6 +275,14 @@ fn decorator_metadata_matches_ngtsc() {
         let oxc = oxc_classes(&result.code, &result.dts_declarations);
         for (class, members) in fixture["classes"].as_object().unwrap() {
             for (key, value) in members.as_object().unwrap() {
+                // A `static ngAcceptInputType_*` the class declares itself comes
+                // from TypeScript's declaration emit, not from ngtsc; oxc only
+                // writes the members it generates.
+                if key.starts_with("dts:ngAcceptInputType_")
+                    && source.contains(&format!("static {}:", &key["dts:".len()..]))
+                {
+                    continue;
+                }
                 let expected = accept_type_without_other_modules(key, value.as_str().unwrap());
                 let expected = expected.as_str();
                 let actual =
@@ -299,7 +307,7 @@ fn decorator_metadata_matches_ngtsc() {
         failures.len(),
         failures.join("\n\n")
     );
-    assert_eq!(compared, 754, "fixtures compared");
+    assert_eq!(compared, 794, "fixtures compared");
 }
 
 fn transform(source: &str) -> TransformResult {
@@ -801,8 +809,11 @@ export function coerce(v: string) { return 1; }
 class Utils { static coerce(v: boolean) { return 2; } }
 @Directive({selector: '[d]'})
 export class Dir { @Input({transform: Utils.coerce}) x: any; }";
-    let code = strip(&transform(source).code);
+    let result = transform(source);
+    let code = strip(&result.code);
     assert!(code.contains(r#"inputs:{x:[2,"x","x",Utils.coerce]}"#), "{code}");
+    let dts = &result.dts_declarations[0].members;
+    assert!(dts.contains("static ngAcceptInputType_x: boolean;"), "{dts}");
 }
 
 /// A transform read through a namespace import (`core.booleanAttribute`):
