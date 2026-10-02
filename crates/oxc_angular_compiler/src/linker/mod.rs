@@ -418,29 +418,28 @@ fn get_metadata_object<'a>(call: &'a CallExpression<'a>) -> Option<&'a ObjectExp
     })
 }
 
-/// Extract a string property value from an object expression.
+/// Extract a static string from an expression.
 /// Handles both regular string literals (`"..."`) and template literals with no expressions (`` `...` ``).
-fn get_string_property<'a>(obj: &'a ObjectExpression<'a>, name: &str) -> Option<&'a str> {
-    for prop in &obj.properties {
-        if let ObjectPropertyKind::ObjectProperty(prop) = prop
-            && matches!(&prop.key, PropertyKey::StaticIdentifier(ident) if ident.name == name)
-        {
-            match &prop.value {
-                Expression::StringLiteral(lit) => {
-                    return Some(lit.value.as_str());
-                }
-                Expression::TemplateLiteral(tl) if tl.expressions.is_empty() => {
-                    if let Some(quasi) = tl.quasis.first()
-                        && let Some(cooked) = &quasi.value.cooked
-                    {
-                        return Some(cooked.as_str());
-                    }
-                }
-                _ => {}
-            }
+fn as_static_string<'a>(expr: &'a Expression<'a>) -> Option<&'a str> {
+    match expr {
+        Expression::StringLiteral(lit) => Some(lit.value.as_str()),
+        Expression::TemplateLiteral(tl) if tl.expressions.is_empty() => {
+            tl.quasis.first()?.value.cooked.as_deref()
         }
+        _ => None,
     }
-    None
+}
+
+/// Extract a string property value from an object expression.
+fn get_string_property<'a>(obj: &'a ObjectExpression<'a>, name: &str) -> Option<&'a str> {
+    obj.properties.iter().find_map(|prop| match prop {
+        ObjectPropertyKind::ObjectProperty(prop)
+            if matches!(&prop.key, PropertyKey::StaticIdentifier(ident) if ident.name == name) =>
+        {
+            as_static_string(&prop.value)
+        }
+        _ => None,
+    })
 }
 
 /// Extract the source text of a property value from an object expression.
@@ -627,14 +626,13 @@ fn is_property_false(obj: &ObjectExpression<'_>, name: &str) -> bool {
     })
 }
 
-/// Check if a property exists and its value is a specific string literal.
+/// Check if a property exists and its value is a specific static string
+/// (string literal or template literal with no substitutions).
 fn is_property_string(obj: &ObjectExpression<'_>, name: &str, value: &str) -> bool {
     obj.properties.iter().any(|prop| {
-        matches!(prop,
-            ObjectPropertyKind::ObjectProperty(p)
-            if matches!(&p.key, PropertyKey::StaticIdentifier(ident) if ident.name == name)
-                && matches!(&p.value, Expression::StringLiteral(s) if s.value == value)
-        )
+        let ObjectPropertyKind::ObjectProperty(p) = prop else { return false };
+        matches!(&p.key, PropertyKey::StaticIdentifier(ident) if ident.name == name)
+            && as_static_string(&p.value) == Some(value)
     })
 }
 
@@ -850,10 +848,17 @@ fn build_host_attrs(host_obj: &ObjectExpression<'_>, source: &str) -> String {
                     PropertyKey::StringLiteral(s) => s.value.to_string(),
                     _ => continue,
                 };
-                let value_span = p.value.span();
-                let value = &source[value_span.start as usize..value_span.end as usize];
-                attrs.push(format!("\"{key}\""));
-                attrs.push(value.to_string());
+                // Static strings (including template literals a bundler may have
+                // emitted) are emitted cooked and quoted like Angular's output.
+                let value = as_static_string(&p.value).map_or_else(
+                    || {
+                        let span = p.value.span();
+                        source[span.start as usize..span.end as usize].to_string()
+                    },
+                    |s| crate::output::emitter::escape_string(s, false),
+                );
+                attrs.push(crate::output::emitter::escape_string(&key, false));
+                attrs.push(value);
             }
         }
     }
@@ -1346,17 +1351,27 @@ fn convert_inputs_to_definition_format(inputs_obj: &ObjectExpression<'_>, source
 
         let quoted_key = quote_key(&key);
 
+        // Simple string: propertyName: "publicName" → keep as is. The value may
+        // arrive as a template literal when a bundler rewrote the string.
+        if let Some(public_name) = as_static_string(&p.value) {
+            entries.push(format!(
+                "{quoted_key}: {}",
+                crate::output::emitter::escape_string(public_name, false)
+            ));
+            continue;
+        }
+
         match &p.value {
-            // Simple string: propertyName: "publicName" → keep as is
-            Expression::StringLiteral(lit) => {
-                entries.push(format!("{quoted_key}: \"{}\"", lit.value.as_str()));
-            }
             // Array: check if it's declaration format [publicName, classPropertyName]
             // and convert to definition format [InputFlags, publicName, classPropertyName]
             Expression::ArrayExpression(arr) => {
                 let val = &source[p.value.span().start as usize..p.value.span().end as usize];
-                let first_is_string =
-                    matches!(arr.elements.first(), Some(ArrayExpressionElement::StringLiteral(_)));
+                let first_is_string = arr
+                    .elements
+                    .first()
+                    .and_then(ArrayExpressionElement::as_expression)
+                    .and_then(as_static_string)
+                    .is_some();
 
                 if !first_is_string {
                     // Already in definition format or unknown, keep as is.
@@ -1379,8 +1394,14 @@ fn convert_inputs_to_definition_format(inputs_obj: &ObjectExpression<'_>, source
             }
             // Object: Angular 16+ format with classPropertyName, publicName, isRequired, etc.
             Expression::ObjectExpression(obj) => {
-                let public_name = get_string_property(obj, "publicName").unwrap_or(&key);
-                let declared_name = get_string_property(obj, "classPropertyName").unwrap_or(&key);
+                let public_name = crate::output::emitter::escape_string(
+                    get_string_property(obj, "publicName").unwrap_or(&key),
+                    false,
+                );
+                let declared_name = crate::output::emitter::escape_string(
+                    get_string_property(obj, "classPropertyName").unwrap_or(&key),
+                    false,
+                );
                 let is_signal = get_bool_property(obj, "isSignal").unwrap_or(false);
                 let is_required = get_bool_property(obj, "isRequired").unwrap_or(false);
                 // Angular emits `transformFunction: null` for signal inputs without
@@ -1401,15 +1422,14 @@ fn convert_inputs_to_definition_format(inputs_obj: &ObjectExpression<'_>, source
 
                 if flags == 0 && transform.is_none() && public_name == declared_name {
                     // Simple case: no flags, no transform, names match
-                    entries.push(format!("{quoted_key}: \"{public_name}\""));
+                    entries.push(format!("{quoted_key}: {public_name}"));
                 } else if let Some(transform_fn) = transform {
                     entries.push(format!(
-                        "{quoted_key}: [{flags}, \"{public_name}\", \"{declared_name}\", {transform_fn}]"
+                        "{quoted_key}: [{flags}, {public_name}, {declared_name}, {transform_fn}]"
                     ));
                 } else {
-                    entries.push(format!(
-                        "{quoted_key}: [{flags}, \"{public_name}\", \"{declared_name}\"]"
-                    ));
+                    entries
+                        .push(format!("{quoted_key}: [{flags}, {public_name}, {declared_name}]"));
                 }
             }
             // Unknown format, keep as is
@@ -1558,11 +1578,8 @@ fn extract_host_metadata_input(
                 PropertyKey::StringLiteral(s) => s.value.to_string(),
                 _ => continue,
             };
-            let value = match &p.value {
-                Expression::StringLiteral(s) => s.value.to_string(),
-                _ => continue,
-            };
-            input.properties.push((key, value));
+            let Some(value) = as_static_string(&p.value) else { continue };
+            input.properties.push((key, value.to_string()));
         }
     }
 
@@ -1574,11 +1591,8 @@ fn extract_host_metadata_input(
                 PropertyKey::StringLiteral(s) => s.value.to_string(),
                 _ => continue,
             };
-            let value = match &p.value {
-                Expression::StringLiteral(s) => s.value.to_string(),
-                _ => continue,
-            };
-            input.listeners.push((key, value));
+            let Some(value) = as_static_string(&p.value) else { continue };
+            input.listeners.push((key, value.to_string()));
         }
     }
 
@@ -2037,12 +2051,10 @@ fn link_component(
     if let Some(styles_arr) = get_array_property(meta, "styles") {
         let mut scoped_styles: Vec<String> = Vec::new();
         for el in &styles_arr.elements {
-            let expr = match el {
-                ArrayExpressionElement::SpreadElement(_) => continue,
-                _ => el.to_expression(),
-            };
-            if let Expression::StringLiteral(s) = expr {
-                let style = s.value.as_str();
+            // `as_expression` returns None for spreads and elisions (e.g. `[, "a"]`),
+            // where `to_expression` would panic.
+            let Some(expr) = el.as_expression() else { continue };
+            if let Some(style) = as_static_string(expr) {
                 if is_emulated {
                     let scoped =
                         crate::styles::shim_css_text(style, "_ngcontent-%COMP%", "_nghost-%COMP%");
