@@ -29,9 +29,6 @@ pub struct HmrUpdateModuleOptions<'a> {
     /// This must be included to ensure the template function's constant references
     /// match the component definition's consts array.
     pub consts_js: Option<&'a str>,
-
-    /// Whether to include full component metadata.
-    pub include_full_metadata: bool,
 }
 
 /// Generate an HMR update module for a component.
@@ -94,8 +91,9 @@ pub fn generate_hmr_update_module_from_js(
     declarations_js: Option<&str>,
     consts_js: Option<&str>,
 ) -> String {
-    // Extract class name from component_id (format: "path@ClassName")
-    let class_name = component_id.split('@').nth(1).unwrap_or("Component");
+    // Extract class name from component_id (format: "path@ClassName"). The path
+    // can contain `@` (e.g. `node_modules/@scope/...`) but a class name cannot.
+    let class_name = component_id.rsplit_once('@').map_or("Component", |(_, name)| name);
 
     generate_hmr_update_module_internal(
         component_id,
@@ -268,6 +266,23 @@ mod tests {
         );
 
         assert!(result.contains("function MyComponent_UpdateMetadata(MyComponent"));
+    }
+
+    #[test]
+    fn test_class_name_extraction_path_with_at() {
+        for id in
+            ["node_modules/@scope/pkg/src/a.ts@MyComponent", "packages/@a/@b/x.ts@MyComponent"]
+        {
+            let result = generate_hmr_update_module_from_js(id, "", None, None, None);
+            assert!(result.contains("function MyComponent_UpdateMetadata(MyComponent"), "{id}");
+            assert!(result.contains("MyComponent.ɵcmp ="), "{id}");
+        }
+    }
+
+    #[test]
+    fn test_class_name_extraction_no_at_falls_back() {
+        let result = generate_hmr_update_module_from_js("MyComponent", "", None, None, None);
+        assert!(result.contains("function Component_UpdateMetadata(Component"));
     }
 
     #[test]

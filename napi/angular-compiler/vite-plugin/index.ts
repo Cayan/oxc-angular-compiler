@@ -599,6 +599,10 @@ export function angular(options: PluginOptions = {}): Plugin[] {
             }
 
             const requestUrl = new URL(req.url, 'http://localhost')
+            // `get` already decodes the percent-encoded id the HMR
+            // initializer put in `id`; a second decodeURIComponent would
+            // corrupt ids containing a literal `%` (e.g. `a%2Fb.ts`, or a
+            // bare `%` which throws URIError).
             const componentId = requestUrl.searchParams.get('c')
 
             if (!componentId) {
@@ -607,8 +611,7 @@ export function angular(options: PluginOptions = {}): Plugin[] {
               return
             }
 
-            const decodedComponentId = decodeURIComponent(componentId)
-            const atIndex = decodedComponentId.indexOf('@')
+            const atIndex = componentId.lastIndexOf('@')
 
             // Validate component ID format: should be "filePath@ClassName"
             if (atIndex === -1) {
@@ -618,8 +621,11 @@ export function angular(options: PluginOptions = {}): Plugin[] {
               return
             }
 
-            const fileId = decodedComponentId.slice(0, atIndex)
-            const className = decodedComponentId.slice(atIndex + 1)
+            const fileId = componentId.slice(0, atIndex)
+            const className = componentId.slice(atIndex + 1)
+            // `fileId` is the transform id verbatim, which is what the per-file
+            // maps are keyed by. `resolvedId` is for the filesystem only: on
+            // Windows it swaps Vite's forward slashes for backslashes.
             const resolvedId = resolve(process.cwd(), fileId)
 
             // Only return an HMR update module if `handleHotUpdate` queued
@@ -628,7 +634,7 @@ export function angular(options: PluginOptions = {}): Plugin[] {
             // ɵɵreplaceMetadata from being called unnecessarily during
             // initial load, which would re-create views and cause errors
             // with @Required() decorators.
-            if (!pendingHmrUpdates.has(decodedComponentId)) {
+            if (!pendingHmrUpdates.has(componentId)) {
               res.setHeader('Content-Type', 'text/javascript')
               res.setHeader('Cache-Control', 'no-cache')
               res.end('')
@@ -640,8 +646,8 @@ export function angular(options: PluginOptions = {}): Plugin[] {
             // around indefinitely because the transient-empty preservation
             // logic below assumes a future save will resolve it. Consume
             // and return empty.
-            if (!componentsByFile.get(resolvedId)?.has(className)) {
-              pendingHmrUpdates.delete(decodedComponentId)
+            if (!componentsByFile.get(fileId)?.has(className)) {
+              pendingHmrUpdates.delete(componentId)
               res.setHeader('Content-Type', 'text/javascript')
               res.setHeader('Cache-Control', 'no-cache')
               res.end('')
@@ -797,11 +803,14 @@ export function angular(options: PluginOptions = {}): Plugin[] {
                 // read is still served on a mismatch — no worse than main,
                 // which scanned the same disk source.
                 const compiledFromThisSource = () => {
-                  const cachedStripped = componentMetadataCache.get(resolvedId)
+                  const cachedStripped = componentMetadataCache.get(fileId)
+                  // `componentDecoratorsByFile` is keyed by the transform id
+                  // like the other per-file maps — `resolvedId` would miss on
+                  // Windows and strip nothing, failing the comparison forever.
                   return (
                     cachedStripped !== undefined &&
                     cachedStripped ===
-                      stripComponentMetadata(source, componentDecoratorsByFile.get(resolvedId))
+                      stripComponentMetadata(source, componentDecoratorsByFile.get(fileId))
                   )
                 }
                 const styles: string[] | null =
@@ -819,7 +828,7 @@ export function angular(options: PluginOptions = {}): Plugin[] {
                 // transiently empty (truncate phase of an atomic write on
                 // Linux), the next inotify event's request would find no
                 // pending entry and deliver no HMR.
-                pendingHmrUpdates.delete(decodedComponentId)
+                pendingHmrUpdates.delete(componentId)
                 res.setHeader('Content-Type', 'text/javascript')
                 res.setHeader('Cache-Control', 'no-cache')
                 res.end(result.hmrModule)
@@ -832,14 +841,17 @@ export function angular(options: PluginOptions = {}): Plugin[] {
 
               // Consume the pending slot on error to prevent repeated failed
               // compilations on every subsequent browser request.
-              pendingHmrUpdates.delete(decodedComponentId)
+              pendingHmrUpdates.delete(componentId)
 
               // Send angular:invalidate event to trigger graceful full reload
-              // This matches Angular's HMR error fallback pattern
+              // This matches Angular's HMR error fallback pattern. The client
+              // compares `d.id` against the ENCODED id literal in its
+              // initializer, so the id must go out encoded — sending it raw
+              // makes the comparison never match and drops the reload.
               server.ws.send({
                 type: 'custom',
                 event: 'angular:invalidate',
-                data: { id: componentId, message: errorMessage, error: true },
+                data: { id: encodeURIComponent(componentId), message: errorMessage, error: true },
               })
 
               res.setHeader('Content-Type', 'text/javascript')
@@ -1036,7 +1048,7 @@ export function angular(options: PluginOptions = {}): Plugin[] {
             const classNamesInFile = new Set<string>()
             const decoratorsInFile = new Map<string, string>()
             for (const componentId of templateUpdateKeys) {
-              const atIdx = componentId.indexOf('@')
+              const atIdx = componentId.lastIndexOf('@')
               if (atIdx === -1) continue
               const className = componentId.slice(atIdx + 1)
               classNamesInFile.add(className)
