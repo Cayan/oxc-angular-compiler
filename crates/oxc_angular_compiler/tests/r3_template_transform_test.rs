@@ -1583,6 +1583,102 @@ mod viewport_arity_validation {
 }
 
 // ============================================================================
+// Tests: hydrate trigger validation
+// Mirrors the `hydrate` error cases in Angular's r3_template_transform_spec.ts.
+// ============================================================================
+
+mod hydrate_trigger_validation {
+    use super::*;
+
+    #[test]
+    fn should_report_parameter_passed_to_hydrate_trigger_with_reference_based_equivalent() {
+        let errors = get_transform_errors(
+            "@defer (on interaction(button); hydrate on interaction(button)) {hello}",
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("Hydration trigger \"interaction\" cannot have parameters")),
+            "Expected a hydrate interaction parameter error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn should_not_report_missing_reference_on_hydrate_trigger() {
+        let errors = get_transform_errors("@defer (on immediate; hydrate on viewport) {hello}");
+        assert!(errors.is_empty(), "Expected no errors, got: {errors:?}");
+    }
+
+    #[test]
+    fn should_report_never_trigger_used_without_hydrate() {
+        for template in [
+            "@defer (on immediate; never) {hello}",
+            "@defer (on immediate; prefetch never) {hello}",
+        ] {
+            let errors = get_transform_errors(template);
+            assert!(
+                errors.iter().any(|e| e.contains("Unrecognized trigger")),
+                "Expected an unrecognized trigger error for {template}, got: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_report_hydrate_never_used_with_additional_characters() {
+        let errors = get_transform_errors("@defer (hydrate never, and thank you) {hello}");
+        assert!(
+            errors.iter().any(|e| e.contains("Unrecognized trigger")),
+            "Expected an unrecognized trigger error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn should_not_report_an_error_when_hydrate_never_is_used_with_additional_blocks() {
+        let errors = get_transform_errors("@defer (hydrate never; on idle;) {hello}");
+        assert!(
+            !errors.iter().any(|e| e.contains("Unrecognized trigger")),
+            "Expected no unrecognized trigger error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn should_not_report_an_error_when_hydrate_never_is_used_with_spaces() {
+        let errors = get_transform_errors("@defer(hydrate never ; on idle ;) {hello}");
+        assert!(
+            !errors.iter().any(|e| e.contains("Unrecognized trigger")),
+            "Expected no unrecognized trigger error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn should_not_report_an_error_when_hydrate_never_is_used_after_another_block() {
+        let errors =
+            get_transform_errors("@defer(\n        on idle;\n        hydrate never) {hello}");
+        assert!(
+            !errors.iter().any(|e| e.contains("Unrecognized trigger")),
+            "Expected no unrecognized trigger error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn should_report_when_hydrate_never_is_used_together_with_another_hydrate_trigger() {
+        // Extra trigger after and before `hydrate never`.
+        for template in [
+            "@defer (hydrate never; hydrate when shouldHydrate()) {hello}",
+            "@defer (hydrate when shouldHydrate(); hydrate never) {hello}",
+        ] {
+            let errors = get_transform_errors(template);
+            assert!(
+                errors.iter().any(|e| e.contains(
+                    "Cannot specify additional `hydrate` triggers if `hydrate never` is present"
+                )),
+                "Expected a hydrate never conflict error for {template}, got: {errors:?}"
+            );
+        }
+    }
+}
+
+// ============================================================================
 // Tests: @for error cascade (Finding #4)
 // Angular only reports the parse-expression error for `@for (x of ) {}`,
 // NOT the missing-track error. Oxc should match.
