@@ -852,6 +852,44 @@ mod let_declarations {
         assert_eq!(text(decl.name_span), "foo =");
         assert_eq!(text(decl.value_span), "");
     }
+
+    #[test]
+    fn should_report_an_incomplete_let_declaration_without_a_value() {
+        // No upstream spec case; the lexer emits INCOMPLETE_LET when the `=` is
+        // missing after the name, which parses like a declaration missing its `;`.
+        let allocator = Allocator::default();
+        let result = HtmlParser::new(&allocator, "@let foo", "TestCmp").parse();
+
+        let [HtmlNode::LetDeclaration(decl)] = result.nodes.as_slice() else {
+            panic!("Expected a single LetDeclaration, got {} nodes", result.nodes.len());
+        };
+        assert_eq!(decl.name.as_str(), "foo");
+        assert_eq!(
+            result.errors.first().map(|e| e.msg.as_str()),
+            Some(
+                "Incomplete @let declaration \"foo\". @let declarations must be written as `@let <name> = <value>;`"
+            )
+        );
+    }
+
+    #[test]
+    fn should_report_an_incomplete_let_without_a_name() {
+        // Bare `@let` at EOF. Angular salvages a node whose name is the raw
+        // token text ("@let"), since the token's only part is the consumed text.
+        let allocator = Allocator::default();
+        let result = HtmlParser::new(&allocator, "@let", "TestCmp").parse();
+
+        let [HtmlNode::LetDeclaration(decl)] = result.nodes.as_slice() else {
+            panic!("Expected a single LetDeclaration, got {} nodes", result.nodes.len());
+        };
+        assert_eq!(decl.name.as_str(), "@let");
+        assert_eq!(
+            result.errors.first().map(|e| e.msg.as_str()),
+            Some(
+                "Incomplete @let declaration \"@let\". @let declarations must be written as `@let <name> = <value>;`"
+            )
+        );
+    }
 }
 
 // ============================================================================

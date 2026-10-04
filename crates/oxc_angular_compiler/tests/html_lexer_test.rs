@@ -1674,6 +1674,55 @@ mod let_declarations {
             ]
         );
     }
+
+    #[test]
+    fn should_report_incomplete_let_without_equals_after_name() {
+        // No upstream spec case; Angular's _consumeLetDeclaration marks the
+        // start token INCOMPLETE_LET whenever the `=` is missing after a name.
+        let result = tokenize_and_humanize_parts("@let foo bar = 123;");
+        assert_eq!(
+            result,
+            vec![
+                (HtmlTokenType::IncompleteLet, vec!["foo".to_string()]),
+                (HtmlTokenType::Text, vec!["bar = 123;".to_string()]),
+                (HtmlTokenType::Eof, vec![]),
+            ]
+        );
+
+        let result = tokenize_and_humanize_parts("@let foo");
+        assert_eq!(
+            result,
+            vec![
+                (HtmlTokenType::IncompleteLet, vec!["foo".to_string()]),
+                (HtmlTokenType::Eof, vec![]),
+            ]
+        );
+    }
+
+    #[test]
+    fn should_report_incomplete_let_when_not_followed_by_whitespace() {
+        // No upstream spec case for EOF/punctuation after `@let`; Angular's
+        // _consumeLetDeclaration emits INCOMPLETE_LET for any non-whitespace
+        // following character, not just identifier characters.
+        let result = tokenize_and_humanize_parts("@let");
+        assert_eq!(
+            result,
+            vec![
+                (HtmlTokenType::IncompleteLet, vec!["@let".to_string()]),
+                (HtmlTokenType::Eof, vec![]),
+            ]
+        );
+
+        let result = tokenize_and_humanize_parts("@let;");
+        assert_eq!(
+            result,
+            vec![
+                (HtmlTokenType::IncompleteLet, vec!["@let".to_string()]),
+                (HtmlTokenType::Text, vec![";".to_string()]),
+                (HtmlTokenType::Eof, vec![]),
+            ]
+        );
+    }
 }
 
 // ============================================================================
