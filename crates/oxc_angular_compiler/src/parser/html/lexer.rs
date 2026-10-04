@@ -1364,12 +1364,13 @@ impl<'a> HtmlLexer<'a> {
             self.advance();
             self.tokens.push(HtmlToken::empty(HtmlTokenType::LetEnd, semi_start, self.index));
         } else {
-            // Incomplete declaration: INCOMPLETE_LET, LET_VALUE
+            // Incomplete declaration: INCOMPLETE_LET, LET_VALUE. Like Angular, the
+            // INCOMPLETE_LET span runs to the end of the consumed value.
             self.tokens.push(HtmlToken::with_part(
                 HtmlTokenType::IncompleteLet,
                 &var_name,
                 start,
-                name_end,
+                value_end,
             ));
             self.tokens.push(HtmlToken::with_part(
                 HtmlTokenType::LetValue,

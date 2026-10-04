@@ -3,6 +3,7 @@
 //! Ported from Angular's `test/ml_parser/html_parser_spec.ts`.
 
 use oxc_allocator::Allocator;
+use oxc_angular_compiler::ast::expression::AngularExpression;
 use oxc_angular_compiler::ast::html::{
     HtmlAttribute, HtmlBlock, HtmlComment, HtmlElement, HtmlLetDeclaration, HtmlNode, HtmlText,
     Visitor, visit_all,
@@ -811,6 +812,45 @@ mod let_declarations {
             result.iter().any(|n| n == &let_decl("label")),
             "Expected a LetDeclaration named 'label', got {result:?}"
         );
+    }
+
+    #[test]
+    fn should_report_an_error_for_an_incomplete_let_declaration() {
+        // TS: it('should report an error for an incomplete let declaration', ...)
+        let allocator = Allocator::default();
+        let result = HtmlParser::new(&allocator, "@let foo =", "TestCmp").parse();
+
+        let errors: Vec<_> = result
+            .errors
+            .iter()
+            .map(|e| (e.msg.as_str(), e.span.start.line, e.span.start.col))
+            .collect();
+        assert_eq!(
+            errors,
+            vec![(
+                "Incomplete @let declaration \"foo\". @let declarations must be written as `@let <name> = <value>;`",
+                0,
+                0
+            )]
+        );
+    }
+
+    #[test]
+    fn should_store_the_locations_of_an_incomplete_let_declaration() {
+        // TS: it('should store the locations of an incomplete let declaration', ...)
+        let source = "@let foo =";
+        let allocator = Allocator::default();
+        let result = HtmlParser::new(&allocator, source, "TestCmp").parse();
+        let text = |span: oxc_span::Span| &source[span.start as usize..span.end as usize];
+
+        let [HtmlNode::LetDeclaration(decl)] = result.nodes.as_slice() else {
+            panic!("Expected a single LetDeclaration, got {} nodes", result.nodes.len());
+        };
+        assert_eq!(decl.name.as_str(), "foo");
+        assert!(matches!(decl.value, AngularExpression::Empty(_)));
+        assert_eq!(text(decl.span), "@let foo =");
+        assert_eq!(text(decl.name_span), "foo =");
+        assert_eq!(text(decl.value_span), "");
     }
 }
 
